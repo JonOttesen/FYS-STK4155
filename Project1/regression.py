@@ -81,10 +81,14 @@ class regression(object):
             return z_tilde
 
     def MSE(self, z_tilde, z):
-        mse = 1/np.size(z)*np.sum((z-z_tilde)**2)
+        z = np.ravel(z)
+        z_tilde = np.ravel(z_tilde)
+        mse = 1/np.size(z)*np.sum((z - z_tilde)**2)
         return mse
 
     def R_squared(self, z_tilde, z):
+        z = np.ravel(z)
+        z_tilde = np.ravel(z_tilde)
         R2D2 = 1 - np.sum((z - z_tilde)**2)/np.sum((z - np.mean(z))**2)
         return R2D2
 
