@@ -6,9 +6,11 @@ import numpy as np
 from random import random, seed
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Lasso
+import sys
 
 #np.set_printoptions(precision = 3,suppress = True, threshold = np.inf)
-m = 31
+m = 51
 
 def FrankeFunction(x,y):
     a = 0.75*np.exp(-(0.25*(9*x-2)**2) - 0.25*((9*y-2)**2))
@@ -33,12 +35,12 @@ def plot3d(x, y, z, z2):
 
     ax.plot_surface(x, y, z2,
     linewidth=0, antialiased=False)
-    ax.set_zlim(-0.10, 1.40)
+    #ax.set_zlim(-0.10, 1.40)
     ax.zaxis.set_major_locator(LinearLocator(10))
     ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 
     # Customize the z axis.
-    ax.set_zlim(-0.10, 1.40)
+    #ax.set_zlim(-0.10, 1.40)
     ax.zaxis.set_major_locator(LinearLocator(10))
     ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
 
@@ -98,10 +100,42 @@ class regression(object):
             z_tilde = X.dot(beta)
             return z_tilde
 
+    def variance(self, z_tilde):
+        z_tilde = np.ravel(z_tilde)
+        var = np.mean((z_tilde - np.mean(z_tilde))**2)
+        return var
+
+    def bias(self, z_tilde, z):
+        z = np.ravel(z)
+        z_tilde = np.ravel(z_tilde)
+        bia = np.mean((z - np.mean(z_tilde)))
+        return bia**2
+
+    def sigma_squared(self, z_tilde, z):
+        z = np.ravel(z)
+        z_tilde = np.ravel(z_tilde)
+        return 1/(len(z) - len(self.X[0]) - 1)*np.sum((z_tilde - z)**2)
+
+    def beta_variance(self, sigma_squared, X = 'None'):
+        if type(X) == type('None'):
+            U, s, V = np.linalg.svd(self.X)
+            sigma = np.zeros(self.X.shape)
+            sigma[:len(s), :len(s)] = np.linalg.inv(np.diag(s**2))
+            variance = sigma_squared*V.dot(sigma.T).dot(sigma).dot(V.T)
+            return np.linalg.inv(variance)
+        else:
+            #U, s, V = np.linalg.svd(X)
+            #sigma = np.zeros(X.shape)
+            #sigma[:len(s), :len(s)] = np.diag(s)
+            #variance = sigma_squared*V.dot(sigma.T).dot(sigma).dot(V.T)
+            variance = np.linalg.inv(X.T.dot(X))
+            #print(np.linalg.inv(variance))
+            return variance
+
     def MSE(self, z_tilde, z):
         z = np.ravel(z)
         z_tilde = np.ravel(z_tilde)
-        mse = 1/np.size(z)*np.sum((z - z_tilde)**2)
+        mse = np.mean((z - z_tilde)**2)
         return mse
 
     def R_squared(self, z_tilde, z):
@@ -151,82 +185,116 @@ class regression(object):
             #beta = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(np.ravel(np.copy(z)))
             return np.reshape(beta, (len(beta), 1))
 
-    def k_cross(self, X, z, folds, train = 0.8):
+    def Ridge(self, lam, z = 2, X = 'None'):
+        beta_ols = self.OLS(z, X)
+        beta_ridge = 1/(1 + lam)*beta_ols
+        return beta_ridge
+
+    def Lasso(self, alpha = 1, z = 2, X ='None'):
+        if type(X) == type('None'):
+            reg = Lasso(alpha = alpha).fit(self.X, np.ravel(self.z))
+            beta = reg.coef_
+            return np.reshape(beta, (len(beta), 1))
+        else:
+            reg = Lasso(alpha = alpha).fit(X, np.ravel(z))
+            return reg
+            beta = reg.coef_
+            return np.reshape(beta, (len(beta), 1))
+
+    def k_cross(self, X, z, fold, train = False, random_num = False, random_fold = False):
+        ## TODO: Get done
         try:
-            indexes = np.arange(len(X))
+            beta_len = len(X[0])
         except:
             X = np.copy(self.X)
+            z = np.copy(self.z)
+            beta_len = len(self.X[0])
 
-        if folds > len(X):
-            folds = len(X)
+        if fold > len(X) or fold < int(1/(1-train)):
+            fold = len(X)
 
-        length = len(X)
-        pr_fold = int(length/folds)
-        percentage_pr_fold = 1/folds
-        fold_indexes = np.arange(folds)
-        np.random.shuffle(fold_indexes)
+        fold_indexes = np.arange(fold)
+        if random_fold:
+            np.random.shuffle(fold_indexes)
 
-        fold = []
-        counter = 0
-        last = 0
-        for i in range(folds):
-            if counter < length - pr_fold*folds:
-                fold.append(list(range(last, last + pr_fold + 1)))
-                counter += 1
-                last += pr_fold + 1
-            elif counter >= length - pr_fold*folds:
-                fold.append(list(range(last, last + pr_fold)))
-                last += pr_fold
+        a = np.arange(len(np.ravel(z)))
+        if random_num:
+            np.random.shuffle(a)
+        folds = np.array_split(a, fold)
 
-        k = 0
-        train_indexes = []
-        test_indexes = []
-        beta = []
-        divider = 0
+        if type(train) == type(0.8):
+            folds_split = np.array_split(fold_indexes, int(fold/(fold - train*fold) + 1))
+        else:
+            folds_split = np.array_split(fold_indexes, fold)
 
-        for i in range(len(fold_indexes)):
-            if percentage_pr_fold*(i - k + 1) >= 1 - train or i == len(fold_indexes) - 1:
-                for j in fold_indexes:
-                    if j in fold_indexes[k:i]:
-                        test_indexes += fold[j]
-                    else:
-                        train_indexes += fold[j]
+        beta = np.zeros((len(folds_split), beta_len))
+        errors = np.zeros((len(folds_split), 2))
 
-                beta.append(self.OLS(X = X[train_indexes], z = np.ravel(np.copy(z))[train_indexes]))
-                divider += 1
-                k = i
+        train_indexs = []
+        test_indexs = []
 
-                if len(test_indexes) + len(train_indexes) != len(X):
-                    print('Error in the k-cross training and testing indexes')
-                    sys.quit()
+        for j in range(len(folds_split)):
+            for i in fold_indexes:
+                if i in folds_split[j]:
+                    test_indexs += folds[i].tolist()
+                else:
+                    train_indexs += folds[i].tolist()
 
-            test_indexes = []
-            train_indexes = []
+            beta[j] = np.ravel(self.OLS(z[train_indexs], X[train_indexs]))
+            z_tilde = self.z_tilde(beta[j], X[test_indexs])
 
-        beta = np.array(beta)
-        beta = np.sum(beta, axis = 0)/len(beta)
-        return beta
+            errors[j, 0] = self.MSE(z_tilde, z[test_indexs])
+            errors[j, 1] = self.R_squared(z_tilde, z[test_indexs])
 
+            train_indexs = []
+            test_indexs = []
+
+        MSE_R2D2 = np.mean(errors, axis = 0)
+
+        print(np.std(beta, axis = 0))
+
+        return np.mean(beta, axis = 0), MSE_R2D2[0], MSE_R2D2[1]
+
+
+#x = np.random.uniform(0, 1, size = m)
+#y = np.random.uniform(0, 1, size = m)
 
 x = np.linspace(0, 1, m)
 y = np.linspace(0, 1, m)
+
 x, y = np.meshgrid(x, y)
 
-z = FrankeFunction(x, y) #+ np.random.normal(0, 1, size = x.shape)
-"""
-squares = regression(x, y, z, 30, 30, 30)
+
+z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
+z_real = FrankeFunction(x, y)
+
+squares2 = regression(x, y, z_real, 5, 5, 5)
+_, X_test2, _, z_test2 =squares2.train_test()
+
+squares = regression(x, y, z, 5, 5, 5)
 X_train, X_test, z_train, z_test = squares.train_test()
-reg = squares.OLS(X = X_train, z = z_train, test = True)
-z_tilde = reg.predict(X_train)
+X = squares.design_matrix(5,5,5)
+
 beta_ols = squares.OLS(z = z_train, X = X_train)
-z_tilde_ols = squares.z_tilde(beta_ols, X_train)
+z_tilde = squares.z_tilde(beta_ols, X = X)
+beta_variance = squares.beta_variance(1, X = X_train)
+z_tilde2 = squares.z_tilde(beta_ols, X = X_test)
 
-print(z_tilde)
-print(np.ravel(z_tilde_ols))
+beta_lasso = squares.Lasso(alpha = 0.0000001, z = z_train, X = X_train)
+print(squares.MSE(z_tilde2, z_test2))
+print(np.diagonal(beta_variance))
 
-"""
+squares.k_cross(X_train, z_train, fold = 31)
+#print(beta_lasso)
 
-def fig_2_11(x, y, complexity = 10, N = 100):
+z_lasso = beta_lasso.predict(X)
+
+
+plot3d(x, y, z = np.reshape(z_tilde, z.shape), z2 = z)
+
+sys.exit()
+
+def fig_2_11(x, y, complexity = 10, N = 20):
     errors_mse = np.zeros((2, complexity + 1))
     errors_r = np.zeros((2, complexity + 1))
 
@@ -237,6 +305,7 @@ def fig_2_11(x, y, complexity = 10, N = 100):
 
     for k in range(N):
         z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
+        print(k)
 
         for i in range(complexity + 1):
             squares = regression(x, y, z, i, i, i)
@@ -244,7 +313,7 @@ def fig_2_11(x, y, complexity = 10, N = 100):
             X_train, X_test, z_train, z_test = squares.train_test(seed = 42)
 
             beta_ols = squares.OLS(z = z_train, X = X_train)
-            beta_k = squares.k_cross(X = X_train, z = z_train, folds = 15)
+            beta_k, _, _ = squares.k_cross(X = X_train, z = z_train, fold = 23)
 
             z_tilde_ols = squares.z_tilde(beta_ols, X_test)
             z_tilde_k = squares.z_tilde(beta_k, X_test)
@@ -283,7 +352,7 @@ def fig_2_11(x, y, complexity = 10, N = 100):
     plt.legend()
     plt.show()
 
-fig_2_11(x, y, complexity = 14)
+fig_2_11(x, y, complexity = 11)
 
 
 
