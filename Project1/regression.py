@@ -9,8 +9,8 @@ from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 import sys
 
-#np.set_printoptions(precision = 3,suppress = True, threshold = np.inf)
 m = 51
+#np.set_printoptions(suppress=True)
 
 def FrankeFunction(x,y):
     a = 0.75*np.exp(-(0.25*(9*x-2)**2) - 0.25*((9*y-2)**2))
@@ -164,8 +164,12 @@ class regression(object):
         If X is given p, n and l won't matter, the polynomial degree used in X is used, X is typically used when using test data.
         """
         if test:
-            reg = LinearRegression().fit(X, z)
-            return reg
+            try:
+                reg = LinearRegression().fit(X, z)
+                return reg.predict(X)
+            except:
+                reg = LinearRegression().fit(self.X, np.ravel(np.copy(self.z)))
+                return reg.predict(self.X)
         if type(X) == type('None'):
             U, s, V = np.linalg.svd(self.X)
             sigma_inv = np.zeros(self.X.shape).T
@@ -174,6 +178,12 @@ class regression(object):
 
             beta = V.T.dot(sigma_inv).dot(U.T).dot(z)
             #beta = np.linalg.inv(self.X.T.dot(self.X)).dot(self.X.T).dot(np.ravel(np.copy(self.z)))
+            #print(beta)
+            #reg = LinearRegression().fit(self.X, np.ravel(np.copy(self.z)))
+            #print(reg.intercept_, reg.coef_)
+            #beta = np.linalg.lstsq(self.X, np.ravel(np.copy(self.z)))
+            #print(beta[0])
+
             return np.reshape(beta, (len(beta), 1))
         else:
             U, s, V = np.linalg.svd(X)
@@ -256,41 +266,22 @@ class regression(object):
         return np.mean(beta, axis = 0), MSE_R2D2[0], MSE_R2D2[1]
 
 
-#x = np.random.uniform(0, 1, size = m)
-#y = np.random.uniform(0, 1, size = m)
+x = np.random.uniform(0, 1, size = m)
+y = np.random.uniform(0, 1, size = m)
 
-x = np.linspace(0, 1, m)
-y = np.linspace(0, 1, m)
+#x = np.linspace(0, 1, m)
+#y = np.linspace(0, 1, m)
 
 x, y = np.meshgrid(x, y)
 
 
 z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
-z_real = FrankeFunction(x, y)
 
-squares2 = regression(x, y, z_real, 5, 5, 5)
-_, X_test2, _, z_test2 =squares2.train_test()
-
-squares = regression(x, y, z, 5, 5, 5)
-X_train, X_test, z_train, z_test = squares.train_test()
-X = squares.design_matrix(5,5,5)
-
-beta_ols = squares.OLS(z = z_train, X = X_train)
-z_tilde = squares.z_tilde(beta_ols, X = X)
-beta_variance = squares.beta_variance(1, X = X_train)
-z_tilde2 = squares.z_tilde(beta_ols, X = X_test)
-
-beta_lasso = squares.Lasso(alpha = 0.0000001, z = z_train, X = X_train)
-print(squares.MSE(z_tilde2, z_test2))
-print(np.diagonal(beta_variance))
-
-squares.k_cross(X_train, z_train, fold = 31)
-#print(beta_lasso)
-
-z_lasso = beta_lasso.predict(X)
+a = regression(x, y, z, 10, 10, 10)
+beta = a.OLS()
 
 
-plot3d(x, y, z = np.reshape(z_tilde, z.shape), z2 = z)
+#plot3d(x, y, z = np.reshape(z_tilde, z.shape), z2 = z)
 
 sys.exit()
 
@@ -353,6 +344,23 @@ def fig_2_11(x, y, complexity = 10, N = 20):
     plt.show()
 
 fig_2_11(x, y, complexity = 11)
+
+
+"""
+n = 201
+test_matrix = np.diag(np.ones(n))
+
+lin = np.linspace(0.5, 5, n)
+for i in range(n*10):
+    j = np.random.randint(0, n)
+    k = np.random.randint(0, n)
+    test_matrix[k, :] += np.random.normal(0, 1)*test_matrix[j, :]
+
+print(np.linalg.matrix_rank(test_matrix))
+det1 = 1/np.linalg.det(test_matrix)
+det2 = np.linalg.det(np.linalg.inv(test_matrix))
+print(det1, det2)
+"""
 
 
 
