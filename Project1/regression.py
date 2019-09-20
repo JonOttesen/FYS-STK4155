@@ -7,10 +7,8 @@ from random import random, seed
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
-import sys
+import scipy
 
-m = 51
-#np.set_printoptions(suppress=True)
 
 def FrankeFunction(x,y):
     a = 0.75*np.exp(-(0.25*(9*x-2)**2) - 0.25*((9*y-2)**2))
@@ -58,7 +56,25 @@ class regression(object):
         self.X = self.design_matrix(p, l, n)
 
     def design_matrix(self, p, l, n):
-        k = n**2
+        """
+        Function for creating a design X-matrix with rows [1, x, y, x^2, xy, xy^2 , etc.]
+        Input is x and y mesh or raveled mesh, keyword agruments n is the degree of the polynomial you want to fit.
+        """
+        if len(self.x.shape) > 1:
+            x = np.ravel(np.copy(self.x))
+            y = np.ravel(np.copy(self.y))
+
+        N = len(x)
+        l = int((n+1)*(n+2)/2)		# Number of elements in beta
+        X = np.ones((N,l))
+
+        for i in range(1,n+1):
+            q = int((i)*(i+1)/2)
+            for k in range(i+1):
+                X[:,q+k] = x**(i-k) * y**k
+
+        return X
+    """ k = n**2
 
         q = p + l + k + 1  #Number of elements in beta
 
@@ -90,7 +106,7 @@ class regression(object):
             index += k
         #print(design)
 
-        return X
+        return X"""
 
     def z_tilde(self, beta, X = 'None'):
         if type(X) == type('None'):
@@ -163,6 +179,8 @@ class regression(object):
         n   -> Integers
         If X is given p, n and l won't matter, the polynomial degree used in X is used, X is typically used when using test data.
         """
+        ## NOTE: Numpy inverse about 25% faster than scipy inverse
+        ## NOTE: Scipy svd about max 10% faster than numpy svd
         if test:
             try:
                 reg = LinearRegression().fit(X, z)
@@ -171,24 +189,19 @@ class regression(object):
                 reg = LinearRegression().fit(self.X, np.ravel(np.copy(self.z)))
                 return reg.predict(self.X)
         if type(X) == type('None'):
-            U, s, V = np.linalg.svd(self.X)
+            U, s, V = scipy.linalg.svd(self.X)
             sigma_inv = np.zeros(self.X.shape).T
-            sigma_inv[:len(s), :len(s)] = np.linalg.inv(np.diag(s))
+
+            sigma_inv[:len(s), :len(s)] = scipy.linalg.inv(np.diag(s))
             z = np.ravel(self.z)
 
             beta = V.T.dot(sigma_inv).dot(U.T).dot(z)
             #beta = np.linalg.inv(self.X.T.dot(self.X)).dot(self.X.T).dot(np.ravel(np.copy(self.z)))
-            #print(beta)
-            #reg = LinearRegression().fit(self.X, np.ravel(np.copy(self.z)))
-            #print(reg.intercept_, reg.coef_)
-            #beta = np.linalg.lstsq(self.X, np.ravel(np.copy(self.z)))
-            #print(beta[0])
-
             return np.reshape(beta, (len(beta), 1))
         else:
             U, s, V = np.linalg.svd(X)
             sigma_inv = np.zeros(X.shape).T
-            sigma_inv[:len(s), :len(s)] = np.linalg.inv(np.diag(s))
+            sigma_inv[:len(s), :len(s)] = np.linalg.scipy(np.diag(s))
             z = np.ravel(z)
 
             beta = V.T.dot(sigma_inv).dot(U.T).dot(z)
@@ -196,9 +209,24 @@ class regression(object):
             return np.reshape(beta, (len(beta), 1))
 
     def Ridge(self, lam, z = 2, X = 'None'):
-        beta_ols = self.OLS(z, X)
-        beta_ridge = 1/(1 + lam)*beta_ols
-        return beta_ridge
+        if type(X) == type('None'):
+            U, s, V = scipy.linalg.svd(self.X)
+            sigma = np.zeros(self.X.shape)
+            sigma[:len(s), :len(s)] = np.diag(s)
+            z = np.ravel(self.z)
+            inverse = scipy.linalg.inv(sigma.T.dot(sigma) + lam*np.identity(len(s)))
+            beta = V.T.dot(inverse).dot(sigma.T).dot(U.T).dot(z)
+            #beta = np.linalg.inv(self.X.T.dot(self.X)).dot(self.X.T).dot(np.ravel(np.copy(self.z)))
+            return np.reshape(beta, (len(beta), 1))
+        else:
+            U, s, V = np.linalg.svd(X)
+            sigma = np.zeros(X.shape)
+            sigma[:len(s), :len(s)] = np.diag(s)
+            z = np.ravel(z)
+            inverse = scipy.linalg.inv(sigma.T.dot(sigma) + lam*np.identity(len(s)))
+            beta = V.T.dot(inverse).dot(sigma.T).dot(U.T).dot(z)
+            #beta = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(np.ravel(np.copy(z)))
+            return np.reshape(beta, (len(beta), 1))
 
     def Lasso(self, alpha = 1, z = 2, X ='None'):
         if type(X) == type('None'):
@@ -207,7 +235,6 @@ class regression(object):
             return np.reshape(beta, (len(beta), 1))
         else:
             reg = Lasso(alpha = alpha).fit(X, np.ravel(z))
-            return reg
             beta = reg.coef_
             return np.reshape(beta, (len(beta), 1))
 
@@ -266,6 +293,8 @@ class regression(object):
         return np.mean(beta, axis = 0), MSE_R2D2[0], MSE_R2D2[1]
 
 
+
+"""
 x = np.random.uniform(0, 1, size = m)
 y = np.random.uniform(0, 1, size = m)
 
@@ -275,91 +304,16 @@ y = np.random.uniform(0, 1, size = m)
 x, y = np.meshgrid(x, y)
 
 
-z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
+z = 10*FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
 
-a = regression(x, y, z, 10, 10, 10)
+a = regression(x, y, z, 5, 5, 5)
 beta = a.OLS()
+z_tilde = a.z_tilde(beta = beta)
+print(a.MSE(z, z_tilde))
+print(a.variance(z_tilde = z_tilde), a.bias(z = z, z_tilde = z_tilde), 1)
 
 
 #plot3d(x, y, z = np.reshape(z_tilde, z.shape), z2 = z)
-
-sys.exit()
-
-def fig_2_11(x, y, complexity = 10, N = 20):
-    errors_mse = np.zeros((2, complexity + 1))
-    errors_r = np.zeros((2, complexity + 1))
-
-    errors_mse_training = np.zeros((2, complexity + 1))
-    errors_r_training = np.zeros((2, complexity + 1))
-
-    complx = np.arange(0, complexity + 1, 1)
-
-    for k in range(N):
-        z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
-        print(k)
-
-        for i in range(complexity + 1):
-            squares = regression(x, y, z, i, i, i)
-
-            X_train, X_test, z_train, z_test = squares.train_test(seed = 42)
-
-            beta_ols = squares.OLS(z = z_train, X = X_train)
-            beta_k, _, _ = squares.k_cross(X = X_train, z = z_train, fold = 23)
-
-            z_tilde_ols = squares.z_tilde(beta_ols, X_test)
-            z_tilde_k = squares.z_tilde(beta_k, X_test)
-
-            errors_mse[0, i] += squares.MSE(z_tilde_ols, z_test)
-            errors_mse[1, i] += squares.MSE(z_tilde_k, z_test)
-            errors_r[0, i] += squares.R_squared(z_tilde_ols, z_test)
-            errors_r[1, i] += squares.R_squared(z_tilde_k, z_test)
-
-            z_tilde_ols = squares.z_tilde(beta_ols, X_train)
-            z_tilde_k = squares.z_tilde(beta_k, X_train)
-
-            errors_mse_training[0, i] += squares.MSE(z_tilde_ols, z_train)
-            errors_mse_training[1, i] += squares.MSE(z_tilde_k, z_train)
-            errors_r_training[0, i] += squares.R_squared(z_tilde_ols, z_train)
-            errors_r_training[1, i] += squares.R_squared(z_tilde_k, z_train)
-
-    #print(errors_mse)
-    #print(errors_mse_training)
-    errors_mse /= N
-    errors_r /= N
-    errors_mse_training /= N
-    errors_r_training /= N
-
-    plt.title('Regular OLS')
-    plt.plot(complx, errors_mse[0], label = 'Test')
-    plt.plot(complx, errors_mse_training[0], label = 'Training')
-    plt.ylim([0, np.max(errors_mse[0]*1.2)])
-    plt.legend()
-    plt.show()
-
-    plt.title('k-fold')
-    plt.plot(complx, errors_mse[1], label = 'Test')
-    plt.plot(complx, errors_mse_training[1], label = 'Training')
-    plt.ylim([0, np.max(errors_mse[1]*1.2)])
-    plt.legend()
-    plt.show()
-
-fig_2_11(x, y, complexity = 11)
-
-
-"""
-n = 201
-test_matrix = np.diag(np.ones(n))
-
-lin = np.linspace(0.5, 5, n)
-for i in range(n*10):
-    j = np.random.randint(0, n)
-    k = np.random.randint(0, n)
-    test_matrix[k, :] += np.random.normal(0, 1)*test_matrix[j, :]
-
-print(np.linalg.matrix_rank(test_matrix))
-det1 = 1/np.linalg.det(test_matrix)
-det2 = np.linalg.det(np.linalg.inv(test_matrix))
-print(det1, det2)
 """
 
 
