@@ -9,8 +9,18 @@ from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 import scipy
 from regression import regression
+import os
+import matplotlib
 
-np.random.seed(42)
+#matplotlib.use('Agg')
+
+script_dir = os.path.dirname(__file__)
+results_dir = os.path.join(script_dir, 'Results/')
+
+if not os.path.isdir(results_dir):
+    os.makedirs(results_dir)
+
+#np.random.seed(42)
 
 def FrankeFunction(x,y):
     a = 0.75*np.exp(-(0.25*(9*x-2)**2) - 0.25*((9*y-2)**2))
@@ -48,118 +58,173 @@ def plot3d(x, y, z, z2):
     fig.colorbar(surf, shrink=0.5, aspect=5)
     plt.show()
 
-def fig_2_11(x, y, complexity = 10, N = 20):
-    errors_mse = np.zeros((2, complexity + 1))
-    errors_r = np.zeros((2, complexity + 1))
-
-    errors_mse_training = np.zeros((2, complexity + 1))
-    errors_r_training = np.zeros((2, complexity + 1))
+def fig_2_11(x, y, z = 'None', complexity = 10, N = 20,method = 'OLS', train = 0.7, fold = 25, method2 = 'OLS'):
+    errors_MSE = np.zeros((4, complexity + 1))
+    errors_R2 = np.zeros((4, complexity + 1))
 
     complx = np.arange(0, complexity + 1, 1)
+    if type(z) == type('None'):
+        z_real = FrankeFunction(x, y)
+    else:
+        z_real = np.copy(z)
 
     for k in range(N):
-        z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
-        print(k)
+        if type(z) == type('None'):
+            z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
 
         for i in range(complexity + 1):
-            squares = regression(x, y, z, i, i, i)
+            a = regression(x, y, z, k = i, split = True, train = train, seed = 42 + k)
+            X = a.design_matrix(k = i, x = x, y = y)
 
-            X_train, X_test, z_train, z_test = squares.train_test(seed = 42)
 
-            beta_ols = squares.OLS(z = z_train, X = X_train)
-            beta_k, _, _ = squares.k_cross(X = X_train, z = z_train, fold = 23)
+            X_train, X_test, z_train, z_test = a.X, a.X_test, a.z, a.z_test
+            _, _, z_train_real, z_test_real = a.train_test(X = X, z = z_real, seed = 42 + k, train = train)
 
-            z_tilde_ols = squares.z_tilde(beta_ols, X_test)
-            z_tilde_k = squares.z_tilde(beta_k, X_test)
+            if method == 'OLS':
+                beta = a.OLS()
+            elif method == 'Ridge':
+                beta = a.Ridge(lam = lamb)
+            elif method == 'Lasso':
+                beta = a.Lasso(alpha = lamb)
+            elif method == 'K-fold':
+                beta = a.k_cross(fold = 25, method2 = method2, lam = lamb)[0]
 
-            errors_mse[0, i] += squares.MSE(z_tilde_ols, z_test)
-            errors_mse[1, i] += squares.MSE(z_tilde_k, z_test)
-            errors_r[0, i] += squares.R_squared(z_tilde_ols, z_test)
-            errors_r[1, i] += squares.R_squared(z_tilde_k, z_test)
+            z_tilde_test = a.z_tilde(X = X_test, beta = beta)
+            z_tilde_train = a.z_tilde(X = X_train, beta = beta)
 
-            z_tilde_ols = squares.z_tilde(beta_ols, X_train)
-            z_tilde_k = squares.z_tilde(beta_k, X_train)
+            errors_MSE[0, i] += a.MSE(z_tilde_test, z_test)
+            errors_MSE[1, i] += a.MSE(z_tilde_test, z_test_real)
+            errors_MSE[2, i] += a.MSE(z_tilde_train, z_train)
+            errors_MSE[3, i] += a.MSE(z_tilde_train, z_train_real)
 
-            errors_mse_training[0, i] += squares.MSE(z_tilde_ols, z_train)
-            errors_mse_training[1, i] += squares.MSE(z_tilde_k, z_train)
-            errors_r_training[0, i] += squares.R_squared(z_tilde_ols, z_train)
-            errors_r_training[1, i] += squares.R_squared(z_tilde_k, z_train)
+            errors_R2[0, i] += a.R_squared(z_tilde_test, z_test)
+            errors_R2[1, i] += a.R_squared(z_tilde_test, z_test_real)
+            errors_R2[2, i] += a.R_squared(z_tilde_train, z_train)
+            errors_R2[3, i] += a.R_squared(z_tilde_train, z_train_real)
+
 
     #print(errors_mse)
     #print(errors_mse_training)
-    errors_mse /= N
-    errors_r /= N
-    errors_mse_training /= N
-    errors_r_training /= N
+    errors_MSE /= N
+    errors_R2 /= N
 
     plt.title('Regular OLS')
-    plt.plot(complx, errors_mse[0], label = 'Test')
-    plt.plot(complx, errors_mse_training[0], label = 'Training')
-    plt.ylim([0, np.max(errors_mse[0]*1.2)])
+    plt.plot(complx, errors_MSE[0], label = 'Test')
+    plt.plot(complx, errors_MSE[2], label = 'Training')
+    #plt.ylim([np.min(errors_R2[2]*1.2), np.max(errors_R2[0]*1.2)])
     plt.legend()
     plt.show()
 
-    plt.title('k-fold')
-    plt.plot(complx, errors_mse[1], label = 'Test')
-    plt.plot(complx, errors_mse_training[1], label = 'Training')
-    plt.ylim([0, np.max(errors_mse[1]*1.2)])
+    plt.title('Regular OLS')
+    plt.plot(complx, errors_MSE[1], label = 'Test')
+    plt.plot(complx, errors_MSE[3], label = 'Training')
+    #plt.ylim([np.min(errors_R2[3]*1.2), np.max(errors_R2[1]*1.2)])
     plt.legend()
     plt.show()
 
 
-def MSE_plots(n_min, n_max, save_fig, method = 'OLS', lamb = 1):
+def MSE_plots(n_min, n_max, save_fig, k = [5], method = 'OLS', lamb = 1, split = False, train = 0.7, N = 1, method2 = 'OLS'):
     n = np.linspace(n_min, n_max, n_max - n_min + 1)
-    mse_real = np.zeros_like(n)
-    mse_data = np.zeros_like(n)
-    R2_real = np.zeros_like(n)
-    R2_data = np.zeros_like(n)
+    errors = np.zeros((4, len(k), len(n))) # First index MSE for real FrankeFunction, MSE for the data, R2 for the real FrankeFunction, R2 for the data
+    #Second index is the max order of polynomial, third index is for the n-value
+    if type(k) != type([2]):
+        k = [k]
 
-    for i in range(len(n)):
-        x = np.random.uniform(0, 1, size = int(n[i]))
-        y = np.random.uniform(0, 1, size = int(n[i]))
-        x, y = np.meshgrid(x, y)
+    for j in range(N):
+        #print(j)
+        for i in range(len(n)):
+            print(i)
+            x = np.random.uniform(0, 1, size = int(n[i]))
+            y = np.random.uniform(0, 1, size = int(n[i]))
+            x, y = np.meshgrid(x, y)
 
-        z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
-        z_real = FrankeFunction(x, y)
+            z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
+            z_real = FrankeFunction(x, y)
 
-        a = regression(x, y, z, 5, 5, 5)
+            for poly in range(len(k)):
+                a = regression(x, y, z, k = k[poly], split = split, train = train)
 
-        if method == 'OLS':
-            beta = a.OLS()
-            z_tilde = a.z_tilde(beta = beta)
-        elif method == 'Ridge':
-            beta = a.Ridge(lam = lamb)
-            z_tilde = a.z_tilde(beta = beta)
-        elif method == 'Lasso':
-            beta = a.Lasso(alpha = lamb)
-            z_tilde = a.z_tilde(beta = beta)
+                if method == 'OLS':
+                    beta = a.OLS()
+                elif method == 'Ridge':
+                    beta = a.Ridge(lam = lamb)
+                elif method == 'Lasso':
+                    beta = a.Lasso(alpha = lamb)
+                elif method == 'K-fold':
+                    beta = a.k_cross(fold = 25, method2 = method2, lam = lamb)[0]
 
-        mse_real[i] = a.MSE(z_tilde, z_real)
-        mse_data[i] = a.MSE(z_tilde, z)
-        R2_real[i] = a.R_squared(z_tilde = z_tilde, z = z_real)
-        R2_data[i] = a.R_squared(z_tilde = z_tilde, z = z)
+                if split == True:
+                    X = a.design_matrix(k = k[poly])
+                    X_train, X_test, z_real_train, z_real_test = a.train_test(X = X, z = z_real, train = train)
+                    z_tilde = a.z_tilde(X = X_test, beta = beta)
+                    errors[0, poly, i] += a.MSE(z_tilde, z_real_test)
+                    errors[1, poly, i] += a.MSE(z_tilde, a.z_test)
+                    errors[2, poly, i] += a.R_squared(z_tilde = z_tilde, z = z_real_test)
+                    errors[3, poly, i] += a.R_squared(z_tilde = z_tilde, z = a.z_test)
+                else:
+                    z_tilde = a.z_tilde(beta = beta)
+                    errors[0, poly, i] += a.MSE(z_tilde, z_real)
+                    errors[1, poly, i] += a.MSE(z_tilde, z)
+                    errors[2, poly, i] += a.R_squared(z_tilde = z_tilde, z = z_real)
+                    errors[3, poly, i] += a.R_squared(z_tilde = z_tilde, z = z)
 
-    fig, axes = plt.subplots(2, 2)
-    ax1, ax2 = axes[0]
-    ax3, ax4 = axes[1]
+    n_mid = int(len(n)/2)
+    title = ['MSE FrankeFunction', 'MSE data', 'R2 FrankeFunction', 'R2 data']
+    y_label = ['MSE', 'MSE', 'R^2', 'R^2']
+    errors /= N
+    save_name = ['franke', 'data', 'franke', 'data']
 
-    ax1.plot(n, mse_real, label = 'MSE FrankeFunction')
-    ax2.plot(n, mse_data, label = 'MSE data')
-    ax3.plot(n, R2_real, label = 'R2 FrankeFunction')
-    ax4.plot(n, R2_data, label = 'R2 data')
-    ax1.legend()
-    ax2.legend()
-    ax3.legend()
-    ax4.legend()
+    if method == 'Ridge':
+        method += ' with lambda = ' + str(lamb)
+    if method == 'K-fold':
+        method += ' using ' + method2
+        if method2 == 'Ridge' or method2 == 'Lasso':
+            method += ' with lambda = ' + str(lamb)
 
-    plt.show()
+    for i in range(4):
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 7))
+        for j in range(len(k)):
+            ax1.plot(n[:n_mid], errors[i, j, :n_mid], label = 'k = ' + str(k[j]))
+            ax2.plot(n[n_mid:], errors[i, j, n_mid:], label = 'k = ' + str(k[j]))
+
+        ax1.set_ylabel(y_label[i]); ax2.set_ylabel(y_label[i])
+        ax1.set_xlabel('n'); ax2.set_xlabel('n')
+
+        if split == True:
+            fig.suptitle(title[i] + ' with ' + str(method) + ' with test/training split at ' + str(train) + ' and mean of ' + str(N) + ' runs.')
+        else:
+            fig.suptitle(title[i] + ' with ' + str(method) + ' without test/training split'  + ' and mean of ' + str(N) + ' runs.')
+
+        ax1.legend(); ax2.legend()
+        #fig.savefig(results_dir + save_fig + method + save_name[i] + y_label[i] + '.png')
+        plt.show()
 
 
-MSE_plots(11, 61, save_fig = 'test', method = 'Ridge', lamb = 0)
-MSE_plots(11, 61, save_fig = 'test', method = 'OLS')
+#-----------------------------------------------------------------------------------------------------
+#Using the function MSE_plots for a large amount of n and k makes a problem very apparent.
+#That is the need to calculate the SVD for the same design matrix, which for large n is REALLY REALLY REALLY SLOW.
+#print(0)
+#MSE_plots(11, 101, save_fig = 'exercise1a', method = 'Ridge', lamb = 5, N = 10, k = [1,3,5])
+#print(1)
+#np.random.seed(42)
+#MSE_plots(11, 101, save_fig = 'exercise1a', method = 'OLS', N = 10, k = [1,3,5])
+#print(2)
+#np.random.seed(42)
+#MSE_plots(11, 101, save_fig = 'exercise1b', method = 'Ridge', lamb = 5, split = True, k = [1,3,5], N = 10)
+#print(3)
+#np.random.seed(42)
+#MSE_plots(11, 101, save_fig = 'exercise1b', method = 'OLS', split = True, k = [1,3,5], N = 10)
+#---------------------------------------------------------------------------------------------------
+
+#np.random.seed(42)
+#MSE_plots(11, 101, save_fig = 'exercise1b', method = 'K-fold', method2 = 'OLS', k = [1,3,5], split = True)
 
 
+x = np.random.uniform(0, 1, size = 61)
+y = np.random.uniform(0, 1, size = 61)
+x, y = np.meshgrid(x, y)
 
+fig_2_11(x, y, complexity = 20, N = 10)
 
 
 
