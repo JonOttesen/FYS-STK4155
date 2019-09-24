@@ -11,6 +11,8 @@ import scipy
 from regression import regression
 import os
 import matplotlib
+import warnings
+warnings.filterwarnings("ignore")
 
 #matplotlib.use('Agg')
 
@@ -30,7 +32,32 @@ def FrankeFunction(x,y):
 
     return a + b + c + d
 
-def plot3d(x, y, z, z2):
+def plot3d(x, y, z, savefig = True):
+
+    fig = plt.figure(figsize=(12, 7))
+    ax = fig.gca(projection='3d')
+
+    # Plot the surface.
+    surf = ax.plot_surface(x, y, z, cmap=cm.coolwarm,
+    linewidth=0, antialiased=False)
+
+    # Customize the z axis.
+    ax.zaxis.set_major_locator(LinearLocator(10))
+    ax.zaxis.set_major_formatter(FormatStrFormatter('%.02f'))
+
+    # Add a color bar which maps values to colors.
+    fig.colorbar(surf, shrink=0.5, aspect=5)
+    ax.set_xlabel('Arbitary length x', fontsize = 11)
+    ax.set_ylabel('Arbitary length y', fontsize = 11)
+    ax.set_zlabel('Arbitary height z', fontsize = 11)
+
+    try:
+        fig.savefig(results_dir + savefig)
+    except:
+        pass
+    plt.show()
+
+def plot3d2(x, y, z, z2):
 
     fig = plt.figure()
     ax = fig.add_subplot(121, projection = '3d')
@@ -133,7 +160,7 @@ def MSE_plots(n_min, n_max, save_fig, k = [5], method = 'OLS', lamb = 1, split =
     for j in range(N):
         #print(j)
         for i in range(len(n)):
-            print(i)
+            #print(i)
             x = np.random.uniform(0, 1, size = int(n[i]))
             y = np.random.uniform(0, 1, size = int(n[i]))
             x, y = np.meshgrid(x, y)
@@ -199,6 +226,59 @@ def MSE_plots(n_min, n_max, save_fig, k = [5], method = 'OLS', lamb = 1, split =
         #fig.savefig(results_dir + save_fig + method + save_name[i] + y_label[i] + '.png')
         plt.show()
 
+def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None, method = 'Ridge', split = True, train = 0.7, seed = 42):
+
+    lambdas = np.linspace(lambda_min, lambda_max, n_lambda)
+    polynomials = np.array(k)
+    X, Y = np.meshgrid(lambdas, polynomials)
+    MSE = np.zeros(np.shape(X))
+
+    j = 0
+    for k in polynomials:
+        print(k)
+
+        model = regression(x, y, z, k = int(k), split = split, train = train, seed = seed)
+        if method == 'Ridge':
+            model.SVD()
+        i = 0
+        for lam in lambdas:
+
+            if method == 'Ridge':
+                beta = model.Ridge(lam = lam)
+            elif method == 'Lasso':
+                beta = model.Lasso(alpha = lam, max_iter = 2000)
+
+            z_tilde = model.z_tilde(beta = beta, X = model.X_test)
+            MSE[j, i] = model.MSE(z_tilde = z_tilde, z = model.z_test)
+            i += 1
+        j += 1
+
+
+    plt.pcolormesh(lambdas.tolist() + [lambdas[-1] + lambdas[1]], polynomials.tolist() + [polynomials[-1] + 1], MSE)
+    plt.colorbar()
+    plt.show()
+
+    plt.plot(lambdas, MSE[0, :])
+    plt.plot(lambdas, MSE[1, :])
+    plt.plot(lambdas, MSE[2, :])
+    plt.plot(lambdas, MSE[3, :])
+    plt.show()
+
+
+np.random.seed(42)
+x = np.sort(np.random.uniform(0, 1, size = 101))
+y = np.sort(np.random.uniform(0, 1, size = 101))
+x, y = np.meshgrid(x, y)
+z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
+
+plot3d(x, y, z, savefig = 'Frankewnoise.png')
+
+"""model = regression(x, y, z, split = True, k = 5)
+_, mse,R2,betas = model.k_cross(fold = 10)
+variance_beta = model.beta_variance(sigma_squared = 1, X = model.X)
+
+for i in range(len(variance_beta)):
+    print('Regular:', variance_beta[i]*2, 'K-fold: ', np.std(betas, axis = 0)[i]*2)"""
 
 #-----------------------------------------------------------------------------------------------------
 #Using the function MSE_plots for a large amount of n and k makes a problem very apparent.
@@ -220,11 +300,27 @@ def MSE_plots(n_min, n_max, save_fig, k = [5], method = 'OLS', lamb = 1, split =
 #MSE_plots(11, 101, save_fig = 'exercise1b', method = 'K-fold', method2 = 'OLS', k = [1,3,5], split = True)
 
 
-x = np.random.uniform(0, 1, size = 61)
-y = np.random.uniform(0, 1, size = 61)
-x, y = np.meshgrid(x, y)
 
-fig_2_11(x, y, complexity = 20, N = 10)
+
+#varying_lamda(x, y, z, lambda_min = 0, lambda_max = 0.1, n_lambda = 10001, k = [5])
+#varying_lamda(x, y, z, lambda_min = 0, lambda_max = 0.01, n_lambda = 2001, k = [4, 5, 6, 7, 8, 9], method = 'Ridge')
+
+
+
+
+
+#x = np.random.uniform(0, 1, size = 61)
+#y = np.random.uniform(0, 1, size = 61)
+#x, y = np.meshgrid(x, y)
+#
+#fig_2_11(x, y, complexity = 20, N = 10)
+
+
+
+
+
+
+
 
 
 

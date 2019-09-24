@@ -55,10 +55,20 @@ class regression(object):
         self.z = z
         self.split = split
         self.k = k
+        self.svd_done = False
         if split == True:
             self.X, self.X_test, self.z, self.z_test = self.train_test(X = self.design_matrix(k), z = z, train = train, seed = seed)
         else:
             self.X = self.design_matrix(k)
+
+    def SVD(self):
+        U, s, V = np.linalg.svd(np.copy(self.X))
+        sigma = np.zeros(np.copy(self.X.shape))
+        sigma[:len(s), :len(s)] = np.diag(s)
+        self.U = np.copy(U)
+        self.sigma = np.copy(sigma)
+        self.V = np.copy(V)
+        self.svd_done = True
 
     def design_matrix(self, k, x = 'None', y = 'None'):
         """
@@ -113,11 +123,12 @@ class regression(object):
         if type(X) == type('None'):
             X = np.copy(self.X)
 
-        U, s, V = scipy.linalg.svd(self.X)
-        sigma = np.zeros(X.shape)
-        sigma[:len(s), :len(s)] = scipy.linalg.inv(np.diag(s**2))
-        variance = sigma_squared*V.dot(sigma.T).dot(sigma).dot(V.T)
-        return scipy.linalg.inv(variance)
+        #U, s, V = scipy.linalg.svd(self.X)
+        #sigma = np.zeros(X.shape)
+        #sigma[:len(s), :len(s)] = scipy.linalg.inv(np.diag(s**2))
+        #variance = sigma_squared*V.dot(sigma.T).dot(sigma).dot(V.T)
+        variance = np.diag(scipy.linalg.inv( X.T @ X ))*sigma_squared
+        return np.sqrt(variance)
 
     def MSE(self, z_tilde, z):
         z = np.ravel(z)
@@ -164,11 +175,19 @@ class regression(object):
                 reg = LinearRegression().fit(self.X, np.ravel(np.copy(self.z)))
                 return reg.predict(self.X)
 
-        if type(X) == type('None'):
-            X = np.copy(self.X)
         if type(z) == type(2):
             z = np.copy(self.z)
         z = np.ravel(z)
+
+        if type(X) == type('None'):
+            if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
+                sigma_inv = np.zeros(self.X.shape).T
+                s = len(self.X[0])
+                sigma_inv[:s, :s] = scipy.linalg.inv(np.copy(self.sigma[:s, :s]))
+                beta = self.V.T.dot(sigma_inv).dot(self.U.T).dot(z)
+                return np.reshape(beta, (len(beta), 1))
+            else:
+                X = np.copy(self.X)
 
         U, s, V = np.linalg.svd(X)
         sigma_inv = np.zeros(X.shape).T
@@ -179,12 +198,21 @@ class regression(object):
         return np.reshape(beta, (len(beta), 1))
 
     def Ridge(self, lam, z = 2, X = 'None'):
-        if type(X) == type('None'):
-            X = np.copy(self.X)
+
         if type(z) == type(2):
             z = np.copy(self.z)
         z = np.ravel(z)
 
+        if type(X) == type('None'):
+            if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
+                s = len(self.X[0])
+                inverse = scipy.linalg.inv(self.sigma.T.dot(self.sigma) + lam*np.identity(s))
+                beta = self.V.T.dot(inverse).dot(self.sigma.T).dot(self.U.T).dot(z)
+
+                return np.reshape(beta, (len(beta), 1))
+            else:
+                X = np.copy(self.X)
+        print('test')
         U, s, V = np.linalg.svd(X)
         sigma = np.zeros(X.shape)
         sigma[:len(s), :len(s)] = np.diag(s)
@@ -194,15 +222,16 @@ class regression(object):
 
         return np.reshape(beta, (len(beta), 1))
 
-    def Lasso(self, alpha = 1, z = 2, X ='None'):
+    def Lasso(self, alpha = 1, z = 2, X ='None', max_iter=1000):
         ## TODO: Check this function
         if type(X) == type('None'):
             X = np.copy(self.X)
         if type(z) == type(2):
             z = np.copy(self.z)
         z = np.ravel(z)
-        reg = Lasso(alpha = alpha, fit_intercept = True).fit(X, np.ravel(z))
+        reg = Lasso(alpha = alpha, fit_intercept = True, max_iter = max_iter).fit(X, np.ravel(z))
         beta = reg.coef_
+        beta[0] += reg.intercept_
         return np.reshape(beta, (len(beta), 1))
 
     def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = False, random_fold = False):
@@ -262,7 +291,7 @@ class regression(object):
 
         #print(np.std(beta, axis = 0))
 
-        return np.mean(beta, axis = 0), MSE_R2D2[0], MSE_R2D2[1]
+        return np.mean(beta, axis = 0), MSE_R2D2[0], MSE_R2D2[1], beta
 
 
 
