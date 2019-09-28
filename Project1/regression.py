@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 import scipy
+import time
 
 
 def FrankeFunction(x,y):
@@ -56,8 +57,9 @@ class regression(object):
         self.split = split
         self.k = k
         self.svd_done = False
+        self.X_full = self.design_matrix(k)
         if split == True:
-            self.X, self.X_test, self.z, self.z_test = self.train_test(X = self.design_matrix(k), z = z, train = train, seed = seed)
+            self.X, self.X_test, self.z, self.z_test = self.train_test(X = np.copy(self.X_full), z = z, train = train, seed = seed)
         else:
             self.X = self.design_matrix(k)
 
@@ -67,8 +69,9 @@ class regression(object):
         sigma[:len(s), :len(s)] = np.diag(s)
         self.U = np.copy(U)
         self.sigma = np.copy(sigma)
-        self.V = np.copy(V)
+        self.VT = np.copy(V)
         self.svd_done = True
+        self.s = np.copy(s)
 
     def design_matrix(self, k, x = 'None', y = 'None'):
         """
@@ -96,7 +99,7 @@ class regression(object):
 
     def z_tilde(self, beta, X = 'None'):
         if type(X) == type('None'):
-            z_tilde = self.X.dot(beta)
+            z_tilde = self.X_full.dot(beta)
             return z_tilde
         else:
             z_tilde = X.dot(beta)
@@ -113,21 +116,34 @@ class regression(object):
         bia = np.mean((z - np.mean(z_tilde)))
         return bia**2
 
-    def sigma_squared(self, z_tilde, z):
+    def sigma_squared(self, z_tilde, z, p = 0):
+        if p == 0:
+            p = len(self.X[0])
+
         z = np.ravel(z)
         z_tilde = np.ravel(z_tilde)
-        return 1/(len(z) - len(self.X[0]) - 1)*np.sum((z_tilde - z)**2)
+        return 1/(len(z) - p - 1)*np.sum((z_tilde - z)**2)
 
-    def beta_variance(self, sigma_squared, X = 'None'):
+    def beta_variance(self, sigma_squared, X = 'None', lam = 0):
         ## TODO: Make sure this works
         if type(X) == type('None'):
-            X = np.copy(self.X)
+            if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
+                X = np.copy(self.X)
+                Sigma_inv = np.diag(1/self.s**2)
+                if lam > 0:
+                    variance = np.diag(self.VT.T.dot(np.diag(np.power(self.s**2 + lam, -2))).dot(np.diag(self.s**2)).dot(self.VT))*sigma_squared
+                else:
+                    variance = np.diag((self.VT.T).dot(Sigma_inv).dot(self.VT))*sigma_squared
+            else:
+                X = np.copy(self.X)
+                if lam > 0:
+                    I = np.identity(len(X[0]))
+                    variance = scipy.linalg.inv(X.T.dot(X) + lam*I).dot(X.T).dot(X).dot(scipy.linalg.inv(X.T.dot(X) + lam*I).T)*sigma_squared
+                else:
+                    variance = np.diag(scipy.linalg.inv( X.T @ X ))*sigma_squared
+        else:
+            variance = np.diag(scipy.linalg.inv( X.T @ X ))*sigma_squared
 
-        #U, s, V = scipy.linalg.svd(self.X)
-        #sigma = np.zeros(X.shape)
-        #sigma[:len(s), :len(s)] = scipy.linalg.inv(np.diag(s**2))
-        #variance = sigma_squared*V.dot(sigma.T).dot(sigma).dot(V.T)
-        variance = np.diag(scipy.linalg.inv( X.T @ X ))*sigma_squared
         return np.sqrt(variance)
 
     def MSE(self, z_tilde, z):
@@ -184,7 +200,7 @@ class regression(object):
                 sigma_inv = np.zeros(self.X.shape).T
                 s = len(self.X[0])
                 sigma_inv[:s, :s] = scipy.linalg.inv(np.copy(self.sigma[:s, :s]))
-                beta = self.V.T.dot(sigma_inv).dot(self.U.T).dot(z)
+                beta = self.VT.T.dot(sigma_inv).dot(self.U.T).dot(z)
                 return np.reshape(beta, (len(beta), 1))
             else:
                 X = np.copy(self.X)
@@ -207,12 +223,12 @@ class regression(object):
             if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
                 s = len(self.X[0])
                 inverse = scipy.linalg.inv(self.sigma.T.dot(self.sigma) + lam*np.identity(s))
-                beta = self.V.T.dot(inverse).dot(self.sigma.T).dot(self.U.T).dot(z)
+                beta = self.VT.T.dot(inverse).dot(self.sigma.T).dot(self.U.T).dot(z)
 
                 return np.reshape(beta, (len(beta), 1))
             else:
                 X = np.copy(self.X)
-        print('test')
+
         U, s, V = np.linalg.svd(X)
         sigma = np.zeros(X.shape)
         sigma[:len(s), :len(s)] = np.diag(s)
@@ -222,19 +238,19 @@ class regression(object):
 
         return np.reshape(beta, (len(beta), 1))
 
-    def Lasso(self, alpha = 1, z = 2, X ='None', max_iter=1000):
+    def Lasso(self, lam = 1, z = 2, X ='None', max_iter=1000):
         ## TODO: Check this function
         if type(X) == type('None'):
             X = np.copy(self.X)
         if type(z) == type(2):
             z = np.copy(self.z)
         z = np.ravel(z)
-        reg = Lasso(alpha = alpha, fit_intercept = True, max_iter = max_iter).fit(X, np.ravel(z))
+        reg = Lasso(alpha = lam, fit_intercept = True, max_iter = max_iter).fit(X, np.ravel(z))
         beta = reg.coef_
         beta[0] += reg.intercept_
         return np.reshape(beta, (len(beta), 1))
 
-    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = False, random_fold = False):
+    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = False, random_fold = False, max_iter = 2000):
         ## TODO: Get done
         if type(X) == type('None'):
             X = np.copy(self.X)
@@ -266,32 +282,37 @@ class regression(object):
 
         train_indexs = []
         test_indexs = []
-
+        variances = []
         for j in range(len(folds_split)):
             for i in fold_indexes:
                 if i in folds_split[j]:
                     test_indexs += folds[i].tolist()
                 else:
                     train_indexs += folds[i].tolist()
+
             if method2 == 'OLS':
                 betaa = self.OLS(z[train_indexs], X[train_indexs])
-            else:
-                betaa = self.Ridge(z[train_indexs], X[train_indexs], lam = lam)
+            if method2 == 'Ridge':
+                betaa = self.Ridge(z = z[train_indexs], X = X[train_indexs], lam = lam)
+            if method2 == 'Lasso':
+                betaa = self.Lasso(z = z[train_indexs], X = X[train_indexs], lam = lam, max_iter = max_iter)
 
             beta[j] = np.ravel(betaa)
             z_tilde = self.z_tilde(betaa, X[test_indexs])
 
+
             errors[j, 0] = self.MSE(z_tilde, z[test_indexs])
             errors[j, 1] = self.R_squared(z_tilde, z[test_indexs])
+            variances.append(self.sigma_squared(z_tilde = z_tilde, z = z[test_indexs], p = 1))
 
             train_indexs = []
             test_indexs = []
 
-        MSE_R2D2 = np.mean(errors, axis = 0)
+        MSE_R2D2 = errors
 
         #print(np.std(beta, axis = 0))
 
-        return np.mean(beta, axis = 0), MSE_R2D2[0], MSE_R2D2[1], beta
+        return np.mean(beta, axis = 0), MSE_R2D2, beta, np.sqrt(np.array(variances))
 
 
 

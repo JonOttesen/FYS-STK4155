@@ -9,10 +9,12 @@ from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 import scipy
 from regression import regression
-import os
+import os, sys
 import matplotlib
 import warnings
+from latex_print import latex_print
 warnings.filterwarnings("ignore")
+plt.rcParams.update({'font.size': 14})
 
 #matplotlib.use('Agg')
 
@@ -47,9 +49,9 @@ def plot3d(x, y, z, savefig = True):
 
     # Add a color bar which maps values to colors.
     fig.colorbar(surf, shrink=0.5, aspect=5)
-    ax.set_xlabel('Arbitary length x', fontsize = 11)
-    ax.set_ylabel('Arbitary length y', fontsize = 11)
-    ax.set_zlabel('Arbitary height z', fontsize = 11)
+    ax.set_xlabel('Arbitary length x', fontsize = 13)
+    ax.set_ylabel('Arbitary length y', fontsize = 13)
+    ax.set_zlabel('Arbitary height z', fontsize = 13)
 
     try:
         fig.savefig(results_dir + savefig)
@@ -226,9 +228,9 @@ def MSE_plots(n_min, n_max, save_fig, k = [5], method = 'OLS', lamb = 1, split =
         #fig.savefig(results_dir + save_fig + method + save_name[i] + y_label[i] + '.png')
         plt.show()
 
-def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None, method = 'Ridge', split = True, train = 0.7, seed = 42):
+def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None, method = 'Ridge', split = True, train = 0.7, seed = 42, max_iter = 2000):
 
-    lambdas = np.linspace(lambda_min, lambda_max, n_lambda)
+    lambdas = np.array([0] + np.logspace(lambda_min, lambda_max, n_lambda).tolist())
     polynomials = np.array(k)
     X, Y = np.meshgrid(lambdas, polynomials)
     MSE = np.zeros(np.shape(X))
@@ -246,39 +248,240 @@ def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None,
             if method == 'Ridge':
                 beta = model.Ridge(lam = lam)
             elif method == 'Lasso':
-                beta = model.Lasso(alpha = lam, max_iter = 2000)
+                beta = model.Lasso(lam = lam, max_iter = max_iter)
 
             z_tilde = model.z_tilde(beta = beta, X = model.X_test)
             MSE[j, i] = model.MSE(z_tilde = z_tilde, z = model.z_test)
             i += 1
         j += 1
 
+    print('Method = ', method)
+    for i in range(len(polynomials)):
+        minimum_index = MSE[i].argmin()
+        print('Minimum lambda for polynomial %.i: ' %(polynomials[i]), lambdas[minimum_index])
 
-    plt.pcolormesh(lambdas.tolist() + [lambdas[-1] + lambdas[1]], polynomials.tolist() + [polynomials[-1] + 1], MSE)
+    #plt.pcolormesh(lambdas.tolist() + [lambdas[-1] + lambdas[1]], polynomials.tolist() + [polynomials[-1] + 1], MSE)
+    #plt.colorbar()
+    #plt.show()
+
+    plt.contourf(lambdas, polynomials, MSE)
     plt.colorbar()
+    plt.ylabel('Polynomial order')
+    plt.xlabel('MSE for the test data')
     plt.show()
 
-    plt.plot(lambdas, MSE[0, :])
-    plt.plot(lambdas, MSE[1, :])
-    plt.plot(lambdas, MSE[2, :])
-    plt.plot(lambdas, MSE[3, :])
+    plt.plot(lambdas, MSE[0, :], label = 'k = ' + str(polynomials[0]))
+    plt.plot(lambdas, MSE[1, :], label = 'k = ' + str(polynomials[1]))
+    plt.plot(lambdas, MSE[2, :], label = 'k = ' + str(polynomials[2]))
+    plt.legend()
     plt.show()
 
 
 np.random.seed(42)
-x = np.sort(np.random.uniform(0, 1, size = 101))
-y = np.sort(np.random.uniform(0, 1, size = 101))
+x = np.sort(np.random.uniform(0, 1, size = 81))
+y = np.sort(np.random.uniform(0, 1, size = 81))
 x, y = np.meshgrid(x, y)
 z = FrankeFunction(x, y) + np.random.normal(0, 1, size = x.shape)
+z_real = FrankeFunction(x, y)
+lambda_ridge = 4.95*10**(-3)
+lambda_lasso = 3.647*10**(-5)
 
-plot3d(x, y, z, savefig = 'Frankewnoise.png')
+#plot3d(x, y, z, savefig = 'Frankewnoise.png')
 
-"""model = regression(x, y, z, split = True, k = 5)
-_, mse,R2,betas = model.k_cross(fold = 10)
-variance_beta = model.beta_variance(sigma_squared = 1, X = model.X)
+#Exercise a
+#----------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Memo to self, this part work great nothing wrong just pointless to print this all the time
 
-for i in range(len(variance_beta)):
-    print('Regular:', variance_beta[i]*2, 'K-fold: ', np.std(betas, axis = 0)[i]*2)"""
+model_not_split = regression(x, y, z, split = False, k = 5)
+model_not_split.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
+
+Beta_Ols = model_not_split.OLS()
+Beta_ridge = model_not_split.Ridge(lam = 4.95*10**(-3))
+Beta_lasso = model_not_split.Lasso(lam = 3.66*10**(-5), max_iter = 2000)
+
+z_tilde_OLS = model_not_split.z_tilde(Beta_Ols)
+z_tilde_Ridge = model_not_split.z_tilde(Beta_ridge)
+z_tilde_Lasso = model_not_split.z_tilde(Beta_lasso)
+
+variance = np.sqrt(model_not_split.sigma_squared(z = z, z_tilde = z_tilde_OLS))
+
+variance_beta = model_not_split.beta_variance(sigma_squared = variance)
+variance_beta_ridge = model_not_split.beta_variance(sigma_squared = variance, lam = 4.95*10**(-3))
+variance_beta_lasso = model_not_split.beta_variance(sigma_squared = variance, lam = 3.66*10**(-5))
+beta_variances = np.array([np.ravel(variance_beta), np.ravel(variance_beta_ridge), np.ravel(variance_beta_lasso)])*2
+
+Latex_print = np.append([np.ravel(Beta_Ols)], [np.ravel(Beta_ridge), np.ravel(Beta_lasso)], axis = 0)
+
+text = []
+for i in range(len(np.ravel(Beta_Ols))):
+    text.append(r'\(\beta_{%.i}\)' %(i))
+#print(latex_print(Latex_print, text = text, errors = beta_variances))
+
+Errors = np.zeros((3,4))  #First axis is the method i.e OLS, Ridge or Lasso. Second is the error type: MSE real franke, MSE data set, R2 real franke, R2 data set
+Errors[0] = np.array([model_not_split.MSE(z_tilde = z_tilde_OLS, z = z_real), model_not_split.MSE(z_tilde = z_tilde_OLS, z = z), model_not_split.R_squared(z_tilde = z_tilde_OLS, z = z_real), model_not_split.R_squared(z_tilde = z_tilde_OLS, z = z)])
+Errors[1] = np.array([model_not_split.MSE(z_tilde = z_tilde_Ridge, z = z_real), model_not_split.MSE(z_tilde = z_tilde_Ridge, z = z), model_not_split.R_squared(z_tilde = z_tilde_Ridge, z = z_real), model_not_split.R_squared(z_tilde = z_tilde_Ridge, z = z)])
+Errors[2] = np.array([model_not_split.MSE(z_tilde = z_tilde_Lasso, z = z_real), model_not_split.MSE(z_tilde = z_tilde_Lasso, z = z), model_not_split.R_squared(z_tilde = z_tilde_Lasso, z = z_real), model_not_split.R_squared(z_tilde = z_tilde_Lasso, z = z)])
+text2 = ['MSE Franke', 'MSE Data', r'R\(^2\) Franke', r'R\(^2\) Data']
+
+#print(latex_print(Errors, text = text2))
+
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+#Exercise b
+#-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+model_split = regression(x, y, z, split = True, k = 5, train = 0.7, seed = 42)
+model_split.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
+
+_,_, a, b = model_split.train_test(X = model_split.X_full, z = z_real, train = 0.7, seed = 42)  #Both the training set and the test set for z_real in that order in list/tuple
+z_real_split = [a,b]
+
+Beta_Ols = model_split.OLS()
+Beta_ridge = model_split.Ridge(lam = 4.95*10**(-3))
+Beta_lasso = model_split.Lasso(lam = 3.66*10**(-5), max_iter = 2000)
+
+z_tilde_OLS = [model_split.z_tilde(Beta_Ols, X = model_split.X), model_split.z_tilde(Beta_Ols, X = model_split.X_test)]  #model_split.X is the traiin splitted design matrix
+z_tilde_Ridge = [model_split.z_tilde(Beta_ridge, X = model_split.X), model_split.z_tilde(Beta_ridge, X = model_split.X_test)]
+z_tilde_Lasso = [model_split.z_tilde(Beta_lasso, X = model_split.X), model_split.z_tilde(Beta_lasso, X = model_split.X_test)]
+
+variance = np.sqrt(model_split.sigma_squared(z = model_split.z, z_tilde = z_tilde_OLS[0]))
+
+variance_beta = model_split.beta_variance(sigma_squared = variance)
+variance_beta_ridge = model_split.beta_variance(sigma_squared = variance, lam = 4.95*10**(-3))
+variance_beta_lasso = model_split.beta_variance(sigma_squared = variance, lam = 3.66*10**(-5))
+beta_variances = np.array([np.ravel(variance_beta), np.ravel(variance_beta_ridge), np.ravel(variance_beta_lasso)])*2
+
+Latex_print = np.append([np.ravel(Beta_Ols)], [np.ravel(Beta_ridge), np.ravel(Beta_lasso)], axis = 0)
+z_new = [model_split.z, model_split.z_test]  #Just to avoid writing model_split.z etc every time I want the training set of z or model_split.z_test when I want the test set of z.
+
+text = []
+for i in range(len(np.ravel(Beta_Ols))):
+    text.append(r'\(\beta_{%.i}\)' %(i))
+#print(latex_print(Latex_print, text = text, errors = beta_variances))
+
+Errors = np.zeros((3,8))  #First axis is the method i.e OLS, Ridge or Lasso. Second is the error type: MSE real franke, MSE data set, R2 real franke, R2 data set
+for i in range(2):
+
+    Errors[0, i*4 :i*4+4] = np.array([model_split.MSE(z_tilde = z_tilde_OLS[i], z = z_real_split[i]), model_split.MSE(z_tilde = z_tilde_OLS[i], z = z_new[i]),
+    model_split.R_squared(z_tilde = z_tilde_OLS[i], z = z_real_split[i]), model_split.R_squared(z_tilde = z_tilde_OLS[i], z = z_new[i])])
+    Errors[1, i*4 :i*4+4] = np.array([model_split.MSE(z_tilde = z_tilde_Ridge[i], z = z_real_split[i]), model_split.MSE(z_tilde = z_tilde_Ridge[i], z = z_new[i]),
+    model_split.R_squared(z_tilde = z_tilde_Ridge[i], z = z_real_split[i]), model_split.R_squared(z_tilde = z_tilde_Ridge[i], z = z_new[i])])
+    Errors[2, i*4 :i*4+4] = np.array([model_split.MSE(z_tilde = z_tilde_Lasso[i], z = z_real_split[i]), model_split.MSE(z_tilde = z_tilde_Lasso[i], z = z_new[i]),
+    model_split.R_squared(z_tilde = z_tilde_Lasso[i], z = z_real_split[i]), model_split.R_squared(z_tilde = z_tilde_Lasso[i], z = z_new[i])])
+
+text2 = ['MSE Franke', 'MSE Data', r'R\(^2\) Franke', r'R\(^2\) Data'] + ['MSE Franke', 'MSE Data', r'R\(^2\) Franke', r'R\(^2\) Data']
+
+#print(latex_print(Errors, text = text2))
+
+varying_lamda(x, y, z, lambda_min = -5, lambda_max = -3, n_lambda = 1001, k = [4, 5, 6, 7, 8, 9], method = 'Lasso')
+varying_lamda(x, y, z, lambda_min = -5, lambda_max = -1.5, n_lambda = 1001, k = [4, 5, 6, 7, 8, 9], method = 'Ridge')
+
+#------------------------------------
+#K-fold cross validation
+
+
+#Histogram creation
+"""
+fold = [10, 40, 200]
+MSE_error = []  #Method, fold index and MSE for data set test or real z test
+i = 0
+for folds in fold:
+    Beta, error1,_, variance = model_split.k_cross(fold = folds, method2 = 'OLS', random_num = True)
+    z_tilde = model_split.z_tilde(X = model_split.X_test, beta = Beta)
+    #MSE_error[i] += np.array([np.mean(error[:, 0]), model_split.MSE(z_tilde = z_tilde, z = z_real_split[1])])
+
+    plt.figure(figsize = (10, 7))
+    plt.title('OLS Histogram of the MSE in k-fold with k = ' + str(folds) + ' folds.')
+    plt.hist(error1[:, 0])
+    plt.axvline(x = np.mean(error1[:, 0]), linestyle = 'dashed', color = 'red', label = 'Mean = %.4g' %(np.mean(error1[:, 0])))
+    plt.ylabel('Total number', fontsize = 14)
+    plt.xlabel('MSE', fontsize = 14)
+    plt.legend()
+
+    plt.savefig(results_dir + 'Hist_Olsk=' + str(folds) + '.png')
+    plt.show()
+
+    Beta, error2,_, variance = model_split.k_cross(fold = folds, method2 = 'Ridge', lam = lambda_ridge, random_num = True)
+    z_tilde = model_split.z_tilde(X = model_split.X_test, beta = Beta)
+    #MSE_error[1, n, i] += np.array([np.mean(error[:, 0]), model_split.MSE(z_tilde = z_tilde, z = z_real_split[1])])
+
+    Beta, error3,_, variance = model_split.k_cross(fold = folds, method2 = 'Ridge', lam = lambda_ridge*100, random_num = True)
+    z_tilde = model_split.z_tilde(X = model_split.X_test, beta = Beta)
+    #MSE_error[1, n, i] += np.array([np.mean(error[:, 0]), model_split.MSE(z_tilde = z_tilde, z = z_real_split[1])])
+
+    fig, ax = plt.subplots(2, 1, figsize = (10, 7))
+    ax1, ax2 = ax
+    ax1.hist(error2[:, 0], label = 'lamba = %.5f' %(lambda_ridge))
+    ax2.hist(error3[:, 0], label = 'lamba = %.3f' %(lambda_ridge*100))
+    ax1.set_title('Ridge Histogram of the MSE in k-fold with k = ' + str(folds) + ' folds.')
+    ax1.axvline(x = np.mean(error2[:, 0]), linestyle = 'dashed', color = 'red', label = 'Mean = %.4g' %(np.mean(error2[:, 0])))
+    ax2.axvline(x = np.mean(error3[:, 0]), linestyle = 'dashed', color = 'red', label = 'Mean = %.4g' %(np.mean(error3[:, 0])))
+
+    ax2.set_xlabel('MSE', fontsize = 14)
+    ax1.set_ylabel('Total number', fontsize = 14)
+    ax2.set_ylabel('Total number', fontsize = 14)
+    ax1.legend()
+    ax2.legend()
+
+    #plt.tight_layout()
+    plt.savefig(results_dir + 'Hist_Ridgek=' + str(folds) + '.png')
+    plt.show()
+
+    Beta, error4,_, variance = model_split.k_cross(fold = folds, method2 = 'Lasso', lam = lambda_lasso, random_num = True, max_iter = 2000)
+    z_tilde = model_split.z_tilde(X = model_split.X_test, beta = Beta)
+    #MSE_error[2, n, i] += np.array([np.mean(error[:, 0]), model_split.MSE(z_tilde = z_tilde, z = z_real_split[1])])
+
+    Beta, error5,_, variance = model_split.k_cross(fold = folds, method2 = 'Lasso', lam = lambda_lasso*100, random_num = True, max_iter = 2000)
+    z_tilde = model_split.z_tilde(X = model_split.X_test, beta = Beta)
+    #MSE_error[2, n, i] += np.array([np.mean(error[:, 0]), model_split.MSE(z_tilde = z_tilde, z = z_real_split[1])])
+
+    fig, ax = plt.subplots(2, 1, figsize = (10, 7))
+    ax1, ax2 = ax
+    ax1.hist(error4[:, 0], label = 'lamba = %.3g' %(lambda_lasso))
+    ax2.hist(error5[:, 0], label = 'lamba = %.3g' %(lambda_lasso*100))
+    ax1.set_title('Lasso Histogram of the MSE in k-fold with k = ' + str(folds) + ' folds.')
+    ax1.axvline(x = np.mean(error4[:, 0]), linestyle = 'dashed', color = 'red', label = 'Mean = %.4g' %(np.mean(error4[:, 0])))
+    ax2.axvline(x = np.mean(error5[:, 0]), linestyle = 'dashed', color = 'red', label = 'Mean = %.4g' %(np.mean(error5[:, 0])))
+
+    ax2.set_xlabel('MSE', fontsize = 14)
+    ax1.set_ylabel('Total number', fontsize = 14)
+    ax2.set_ylabel('Total number', fontsize = 14)
+    ax1.legend()
+    ax2.legend()
+
+    #plt.tight_layout()
+    plt.savefig(results_dir + 'Hist_Lassok=' + str(folds) + '.png')
+    plt.show()
+
+    i += 1
+
+
+Beta,_,_,_ = model_split.k_cross(fold = 40, method2 = 'OLS', random_num = True)
+z_tilde = model_split.z_tilde(beta = Beta, X = model_split.X_test)
+R2 = model_split.R_squared(z = z_new[1], z_tilde = z_tilde)
+MSE = model_split.MSE(z = z_new[1], z_tilde = z_tilde)
+
+print('The MSE score between the model and the test data: ', MSE)
+print('The R2 score between the model and the test data: ', R2)
+
+"""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #-----------------------------------------------------------------------------------------------------
 #Using the function MSE_plots for a large amount of n and k makes a problem very apparent.
@@ -302,18 +505,13 @@ for i in range(len(variance_beta)):
 
 
 
-#varying_lamda(x, y, z, lambda_min = 0, lambda_max = 0.1, n_lambda = 10001, k = [5])
-#varying_lamda(x, y, z, lambda_min = 0, lambda_max = 0.01, n_lambda = 2001, k = [4, 5, 6, 7, 8, 9], method = 'Ridge')
-
-
-
 
 
 #x = np.random.uniform(0, 1, size = 61)
 #y = np.random.uniform(0, 1, size = 61)
 #x, y = np.meshgrid(x, y)
 #
-#fig_2_11(x, y, complexity = 20, N = 10)
+#fig_2_11(x, y, complexity = 20, N = 5)
 
 
 
