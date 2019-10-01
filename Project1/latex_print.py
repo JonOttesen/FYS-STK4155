@@ -21,7 +21,6 @@ class latex_print():
         else:
             self.errors = np.zeros_like(self.X)
 
-
         self.decimal = decimal
         self.rounded = self.rounding(self.X)
         self.errors_rounded = self.rounding(self.errors)

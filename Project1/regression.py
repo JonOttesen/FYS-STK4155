@@ -63,15 +63,31 @@ class regression(object):
         else:
             self.X = self.design_matrix(k)
 
-    def SVD(self):
-        U, s, V = np.linalg.svd(np.copy(self.X))
-        sigma = np.zeros(np.copy(self.X.shape))
-        sigma[:len(s), :len(s)] = np.diag(s)
-        self.U = np.copy(U)
-        self.sigma = np.copy(sigma)
-        self.VT = np.copy(V)
+        self.svd_full_matrices = True
+
+    def SVD(self, gotta_go_fast = True):
+
         self.svd_done = True
-        self.s = np.copy(s)
+        if gotta_go_fast == False:
+            self.economic = False
+            U, s, V = np.linalg.svd(np.copy(self.X))
+            sigma = np.zeros(np.copy(self.X.shape))
+            sigma[:len(s), :len(s)] = np.diag(s)
+            self.U = np.copy(U)
+            self.sigma = np.copy(sigma)
+            self.VT = np.copy(V)
+            self.s = np.copy(s)
+        else:
+            self.economic = True
+            U, s, V = scipy.linalg.svd(self.X, full_matrices=False)
+            self.U = np.copy(U)
+            self.VT = np.copy(V)
+            self.s = np.copy(s)
+
+            sigma = np.zeros(np.copy(self.X.shape))
+            sigma[:len(s), :len(s)] = np.diag(s)
+            self.sigma = np.copy(sigma)
+
 
     def design_matrix(self, k, x = 'None', y = 'None'):
         """
@@ -106,9 +122,7 @@ class regression(object):
             return z_tilde
 
     def variance(self, z_tilde):
-        z_tilde = np.ravel(z_tilde)
-        var = np.mean((z_tilde - np.mean(z_tilde))**2)
-        return var
+        return (np.mean((np.mean(z_tilde) - z_tilde)**2))
 
     def bias(self, z_tilde, z):
         z = np.ravel(z)
@@ -172,7 +186,7 @@ class regression(object):
         X_train, X_test, z_train, z_test = train_test_split(X, z, train_size = train, random_state = seed)
         return X_train, X_test, z_train, z_test
 
-    def OLS(self, z = 2, X = 'None', test = False):
+    def OLS(self, z = 2, X = 'None', test = False, full_matrices = False):
         """
         Ordinary least squares up to order x^p, y^l and x^n*y^n.
         The general shape is [1, x^1, x^2 .., y^1, y^2 ...., x*y, x^(2)*y, x^n*y, x*y^2, x^2*y^2...]
@@ -197,19 +211,22 @@ class regression(object):
 
         if type(X) == type('None'):
             if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
-                sigma_inv = np.zeros(self.X.shape).T
-                s = len(self.X[0])
-                sigma_inv[:s, :s] = scipy.linalg.inv(np.copy(self.sigma[:s, :s]))
-                beta = self.VT.T.dot(sigma_inv).dot(self.U.T).dot(z)
+                if self.economic == False:
+                    s = len(self.X[0])
+                    sigma_inv = np.zeros(self.X.shape).T
+                    sigma_inv[:s, :s] = np.diag(1/self.s)
+                    beta = self.VT.T.dot(sigma_inv).dot(self.U.T).dot(z)
+
+                if self.economic == True:
+                    beta = np.dot(self.VT.T, self.U.T @ z.T/self.s)
+
                 return np.reshape(beta, (len(beta), 1))
             else:
                 X = np.copy(self.X)
 
-        U, s, V = np.linalg.svd(X)
-        sigma_inv = np.zeros(X.shape).T
-        sigma_inv[:len(s), :len(s)] = scipy.linalg.inv(np.diag(s))
+        U, s, VT = np.linalg.svd(X, full_matrices = False)
 
-        beta = V.T.dot(sigma_inv).dot(U.T).dot(z)
+        beta = np.dot(VT.T, U.T @ z.T/s)
         #beta = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(np.ravel(np.copy(z)))
         return np.reshape(beta, (len(beta), 1))
 
@@ -221,20 +238,22 @@ class regression(object):
 
         if type(X) == type('None'):
             if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
-                s = len(self.X[0])
-                inverse = scipy.linalg.inv(self.sigma.T.dot(self.sigma) + lam*np.identity(s))
-                beta = self.VT.T.dot(inverse).dot(self.sigma.T).dot(self.U.T).dot(z)
+                if self.economic == False:
+                    s = len(self.X[0])
+                    inverse = scipy.linalg.inv(self.sigma.T.dot(self.sigma) + lam*np.identity(s))
+                    beta = self.VT.T.dot(inverse).dot(self.sigma.T).dot(self.U.T).dot(z)
+                if self.economic == True:
+                    beta = np.dot(self.VT.T, self.U.T @ z.T*self.s*np.power(self.s**2 + lam, -1))
 
                 return np.reshape(beta, (len(beta), 1))
             else:
                 X = np.copy(self.X)
 
-        U, s, V = np.linalg.svd(X)
-        sigma = np.zeros(X.shape)
-        sigma[:len(s), :len(s)] = np.diag(s)
+        U, s, VT = np.linalg.svd(X, full_matrices = False)
+
         z = np.ravel(z)
-        inverse = scipy.linalg.inv(sigma.T.dot(sigma) + lam*np.identity(len(s)))
-        beta = V.T.dot(inverse).dot(sigma.T).dot(U.T).dot(z)
+
+        beta = np.dot(VT.T, U.T @ z.T*s*np.power(s**2 + lam, -1))
 
         return np.reshape(beta, (len(beta), 1))
 
@@ -250,7 +269,7 @@ class regression(object):
         beta[0] += reg.intercept_
         return np.reshape(beta, (len(beta), 1))
 
-    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = False, random_fold = False, max_iter = 2000):
+    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = True, random_fold = False, max_iter = 2000):
         ## TODO: Get done
         if type(X) == type('None'):
             X = np.copy(self.X)
@@ -278,11 +297,13 @@ class regression(object):
             folds_split = np.array_split(fold_indexes, fold)
 
         beta = np.zeros((len(folds_split), beta_len))
-        errors = np.zeros((len(folds_split), 2))
+        errors = np.zeros((len(folds_split), 4))
 
         train_indexs = []
         test_indexs = []
         variances = []
+        bias = np.zeros(len(folds_split))
+        var = np.zeros_like(bias)
         for j in range(len(folds_split)):
             for i in fold_indexes:
                 if i in folds_split[j]:
@@ -299,11 +320,19 @@ class regression(object):
 
             beta[j] = np.ravel(betaa)
             z_tilde = self.z_tilde(betaa, X[test_indexs])
+            z_tilde2 = self.z_tilde(betaa, X[train_indexs])
+
+
+            bias[j] += self.bias(z = z[test_indexs], z_tilde = z_tilde)
+
+            var[j] += self.variance(z_tilde)
 
 
             errors[j, 0] = self.MSE(z_tilde, z[test_indexs])
             errors[j, 1] = self.R_squared(z_tilde, z[test_indexs])
-            variances.append(self.sigma_squared(z_tilde = z_tilde, z = z[test_indexs], p = 1))
+            errors[j, 2] = self.MSE(z_tilde2, z[train_indexs])
+            errors[j, 3] = self.R_squared(z_tilde2, z[train_indexs])
+            variances.append(self.sigma_squared(z_tilde = self.z_tilde(betaa, X[train_indexs]), z = z[train_indexs], p = len(X[train_indexs][0])))
 
             train_indexs = []
             test_indexs = []
@@ -312,7 +341,7 @@ class regression(object):
 
         #print(np.std(beta, axis = 0))
 
-        return np.mean(beta, axis = 0), MSE_R2D2, beta, np.sqrt(np.array(variances))
+        return np.mean(beta, axis = 0), MSE_R2D2, beta, np.array(variances), np.mean(bias), np.mean(var)
 
 
 
