@@ -252,7 +252,7 @@ cf = 1.96
 #sys.exit()
 #varying_lamda(x, y, z, lambda_min = -5, lambda_max = 1, n_lambda = 1001, k = [15, 16, 17, 18, 19], method = 'Ridge', max_iter = 1000)
 
-varying_lamda(x, y, z, lambda_min = -7, lambda_max = -4, n_lambda = 1001, k = [17, 18, 19], method = 'Ridge', max_iter = 1000, l_min = False, save_fig = 'Ridge_bas')
+varying_lamda(x, y, z, lambda_min = -7, lambda_max = -4, n_lambda = 1001, k = [17, 18, 19], method = 'Ridge', max_iter = 1000, l_min = False, save_fig = 'Ridge_bad')
 varying_lamda(x, y, z, lambda_min = -7, lambda_max = -4, n_lambda = 101, k = [17, 18, 19], method = 'Lasso', max_iter = 1000, l_min = False, save_fig = 'Lasso_bad')
 
 sys.exit()
