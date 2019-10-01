@@ -132,6 +132,7 @@ def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, N = 7, method =
     plt.legend()
     plt.xlabel('Polynomial maximum order', fontsize = 14)
     plt.ylabel('MSE', fontsize = 14)
+    plt.tight_layout()
     plt.savefig(results_dir + 'bias_variance_terrain.png')
 
     plt.show()
@@ -191,6 +192,7 @@ def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None,
     plt.colorbar()
     plt.ylabel('Polynomial order', fontsize = 14)
     plt.xlabel('Lambda', fontsize = 14)
+    plt.tight_layout()
     try:
         plt.savefig(results_dir + save_fig + 'contour' + '.png')
     except:
@@ -208,6 +210,7 @@ def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None,
     plt.legend()
     plt.xlabel('Lambda', fontsize = 14)
     plt.ylabel('MSE', fontsize = 14)
+    plt.tight_layout()
     try:
         plt.savefig(results_dir + save_fig + '.png')
     except:
