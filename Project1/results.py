@@ -302,9 +302,9 @@ def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None,
     plt.show()
 
     plt.title('MSE for the test data with ' + method)
-    plt.plot(lambdas, MSE[0, :], label = 'k = ' + str(polynomials[0]))
-    plt.plot(lambdas, MSE[1, :], label = 'k = ' + str(polynomials[1]))
-    plt.plot(lambdas, MSE[2, :], label = 'k = ' + str(polynomials[2]))
+    plt.plot(lambdas, MSE[-1, :], label = 'k = ' + str(polynomials[-1]))
+    plt.plot(lambdas, MSE[-2, :], label = 'k = ' + str(polynomials[-2]))
+    plt.plot(lambdas, MSE[-3, :], label = 'k = ' + str(polynomials[-3]))
     if l_min:
         plt.plot(lambdas[lambdas_min[1]], MSE[1, lambdas_min[1]], 'ro', label = 'Lambda min = %.4g' %(lambdas[lambdas_min[1]]))
     else:
@@ -317,6 +317,7 @@ def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None,
     except:
         pass
     plt.show()
+    return lambdas_min
 
 def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, N = 7, method = 'OLS', seed = 42, lam = 0, train = 0.7, split = False):
     errors = np.zeros((4, complexity + 1))
@@ -376,9 +377,153 @@ def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, N = 7, method =
     plt.legend()
     plt.show()
 
+def best_fit(x, y, z, z_real, p = list(range(3, 15)), folds = 4, train = 0.7, seed = 42, n_lambda = 2001, n = 1):
+    lambdas = np.array([0] + np.logspace(-5.5, -1, n_lambda).tolist())
+    polynomials = np.array(p)
+    X, Y = np.meshgrid(lambdas, polynomials)
+    MSE = np.zeros(np.shape(X))
+    lambda_min_ridge = np.zeros(len(polynomials))
+    lambda_min_lasso = np.zeros(len(polynomials))
+    R2 = np.zeros((3, len(polynomials)))
+    MSE = np.zeros((3, len(polynomials)))
+
+    R2_data = np.zeros((3, len(polynomials)))
+    MSE_data = np.zeros((3, len(polynomials)))
 
 
-np.random.seed(42)
+    for i in range(len(polynomials)):
+        print(i + polynomials[0])
+        ridge_sum = 0
+        lasso_sum = 0
+        model = regression(x, y, z, split = True, train = train, seed = seed, k = polynomials[i])
+        z_test = np.ravel(np.copy(model.z_test))
+        for j in range(n):
+            ridge_sum += model.lambda_best_fit(method = 'Ridge', fold = folds, random_num = True)[0]
+            lasso_sum += model.lambda_best_fit(method = 'Lasso', fold = folds)[0]
+        lambda_min_ridge[i] = ridge_sum/n
+        lambda_min_lasso[i] = lasso_sum/n
+
+        _,_, a, z_real_test = model.train_test(X = model.X_full, z = z_real, train = 0.7, seed = seed)  #Both the training set and the test set for z_real in that order in list/tuple
+
+        Beta_ols = model.OLS()
+        Beta_ridge = model.Ridge(lam = lambda_min_ridge[i])
+        Beta_lasso = model.Lasso(lam = lambda_min_lasso[i], max_iter = 1001)
+
+        z_tilde_OLS = model.z_tilde(Beta_ols, X = model.X_test)
+        z_tilde_Ridge = model.z_tilde(Beta_ridge, X = model.X_test)
+        z_tilde_Lasso = model.z_tilde(Beta_lasso, X = model.X_test)
+
+        R2[0, i] = model.R_squared(z_tilde = z_tilde_OLS, z = z_real_test)
+        R2[1, i] = model.R_squared(z_tilde = z_tilde_Ridge, z = z_real_test)
+        R2[2, i] = model.R_squared(z_tilde = z_tilde_Lasso, z = z_real_test)
+
+        MSE[0, i] = model.MSE(z_tilde = z_tilde_OLS, z = z_real_test)
+        MSE[1, i] = model.MSE(z_tilde = z_tilde_Ridge, z = z_real_test)
+        MSE[2, i] = model.MSE(z_tilde = z_tilde_Lasso, z = z_real_test)
+
+        R2_data[0, i] = model.R_squared(z_tilde = z_tilde_OLS, z = z_test)
+        R2_data[1, i] = model.R_squared(z_tilde = z_tilde_Ridge, z = z_test)
+        R2_data[2, i] = model.R_squared(z_tilde = z_tilde_Lasso, z = z_test)
+
+        MSE_data[0, i] = model.MSE(z_tilde = z_tilde_OLS, z = z_test)
+        MSE_data[1, i] = model.MSE(z_tilde = z_tilde_Ridge, z = z_test)
+        MSE_data[2, i] = model.MSE(z_tilde = z_tilde_Lasso, z = z_test)
+    _, _, lambdas = model.lambda_best_fit(method = 'Ridge', fold = folds, random_num = True)
+
+    min_MSE = [[np.argmin(MSE[0]), np.argmin(MSE[1]), np.argmin(MSE[2])], [np.argmin(MSE_data[0]), np.argmin(MSE_data[1]), np.argmin(MSE_data[2])]]
+    min_R2 = [[np.argmin(MSE[0]), np.argmin(MSE[1]), np.argmin(MSE[2])], [np.argmin(MSE_data[0]), np.argmin(MSE_data[1]), np.argmin(MSE_data[2])]]
+
+    print('Minimum MSE with Frank, OLS: ', np.min(MSE[0]), ' Ridge: ', np.min(MSE[0]), ' Lasso: ', np.min(MSE[2]))
+    print('With polynoms: ', np.argmin(MSE[0]) + polynomials[0], np.argmin(MSE[1]) + polynomials[0], np.argmin(MSE[2]) + polynomials[0])
+    print('----------------------------------------------------------------------------------------------')
+    print('Minimum MSE with Data, OLS: ', np.min(MSE_data[0]), ' Ridge: ', np.min(MSE_data[0]), ' Lasso: ', np.min(MSE_data[2]))
+    print('With polynoms: ', np.argmin(MSE_data[0]) + polynomials[0], np.argmin(MSE_data[1]) + polynomials[0], np.argmin(MSE_data[2]) + polynomials[0])
+    print('----------------------------------------------------------------------------------------------')
+    print('Maximum R2 with Frank, OLS: ', np.min(R2[0]), ' Ridge: ', np.min(R2[0]), ' Lasso: ', np.min(R2[2]))
+    print('With polynoms: ', np.argmin(R2[0]) + polynomials[0], np.argmin(R2[1]) + polynomials[0], np.argmin(R2[2]) + polynomials[0])
+    print('----------------------------------------------------------------------------------------------')
+    print('Maximum R2 with Frank, OLS: ', np.min(R2_data[0]), ' Ridge: ', np.min(R2_data[0]), ' Lasso: ', np.min(R2_data[2]))
+    print('With polynoms: ', np.argmin(R2_data[0]) + polynomials[0], np.argmin(R2_data[1]) + polynomials[0], np.argmin(R2_data[2]) + polynomials[0])
+    print('----------------------------------------------------------------------------------------------')
+
+    print('Ridge lambda')
+    print(lambda_min_lasso)
+    print('Lasso lambda')
+    print(lambda_min_lasso)
+
+    #Real Franke
+
+    plt.plot(polynomials, R2[0], 'go--', label = 'OLS', color = 'red')
+    plt.plot(polynomials, R2[1], 'go--', label = 'Ridge', color = 'blue')
+    plt.plot(polynomials, R2[2], 'go--', label = 'Lasso', color = 'green')
+    plt.title('R2 error between the model and real FrankeFunction', fontsize = 14)
+    plt.ylabel('R2')
+    plt.xlabel('Polynomial degree')
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(results_dir + 'ridge_lasso_high_order_poly.png')
+
+    plt.show()
+
+    plt.plot(polynomials, MSE[0], 'go--', label = 'OLS', color = 'red')
+    plt.plot(polynomials, MSE[1], 'go--', label = 'Ridge', color = 'blue')
+    plt.plot(polynomials, MSE[2], 'go--', label = 'Lasso', color = 'green')
+    plt.title('MSE for test data between the model and FrankeFunction', fontsize = 14)
+    plt.ylabel('MSE')
+    plt.xlabel('Polynomial degree')
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(results_dir + 'ridge_lasso_high_order_polyMSE.png')
+
+    plt.show()
+
+    #Noise Franke
+
+    plt.plot(polynomials, R2_data[0], 'go--', label = 'OLS', color = 'red')
+    plt.plot(polynomials, R2_data[1], 'go--', label = 'Ridge', color = 'blue')
+    plt.plot(polynomials, R2_data[2], 'go--', label = 'Lasso', color = 'green')
+    plt.title('R2 error between the model and real FrankeFunction', fontsize = 14)
+    plt.ylabel('R2')
+    plt.xlabel('Polynomial degree')
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(results_dir + 'ridge_lasso_high_order_poly_data.png')
+
+    plt.show()
+
+    plt.plot(polynomials, MSE_data[0], 'go--', label = 'OLS', color = 'red')
+    plt.plot(polynomials, MSE_data[1], 'go--', label = 'Ridge', color = 'blue')
+    plt.plot(polynomials, MSE_data[2], 'go--', label = 'Lasso', color = 'green')
+    plt.title('MSE for test data between the model and FrankeFunction', fontsize = 14)
+    plt.ylabel('MSE')
+    plt.xlabel('Polynomial degree')
+    plt.legend()
+    plt.tight_layout()
+
+    plt.savefig(results_dir + 'ridge_lasso_high_order_polyMSE_data.png')
+
+    plt.show()
+
+    #Polynomial and lambda
+
+    plt.plot(polynomials, lambda_min_ridge, 'go--', label = 'Ridge', color = 'blue')
+    plt.plot(polynomials, lambda_min_lasso, 'go--', label = 'Lasso', color = 'green')
+
+    plt.title('The \'best\' lambda pr polynomial')
+    plt.ylabel('Lambda')
+    plt.xlabel('Polynomial degree')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(results_dir + 'ridge_lasso_lambda_poly.png')
+    plt.show()
+
+
+
+
+#np.random.seed(42)
 x = np.sort(np.random.uniform(0, 1, size = 81))
 y = np.sort(np.random.uniform(0, 1, size = 81))
 x, y = np.meshgrid(x, y)
@@ -388,8 +533,12 @@ lambda_ridge = 4.954*10**(-3)
 lambda_lasso = 3.64810**(-5)
 cf = 1.96
 
-varying_lamda(x, y, z, lambda_min = -5, lambda_max = -1, n_lambda = 1001, k = [10, 11, 12, 13, 14], method = 'Lasso', max_iter = 1000)
-varying_lamda(x, y, z, lambda_min = -5, lambda_max = 1, n_lambda = 1001, k = [10, 11, 12, 13, 14], method = 'Ridge')
+best_fit(x, y, z, z_real, n_lambda = 4001, folds = 5, p = list(range(3, 15)), n = 40)
+
+sys.exit()
+
+varying_lamda(x, y, z, lambda_min = -4, lambda_max = -0.5, n_lambda = 2001, k = [10, 11, 12, 13, 14], method = 'Ridge', save_fig = 'Franke_ridge_very_high_poly')
+varying_lamda(x, y, z, lambda_min = -5, lambda_max = -3.8, n_lambda = 1001, k = [10, 11, 12, 13, 14], method = 'Lasso', max_iter = 1000, save_fig = 'Franke_lasso_very_high_poly')
 
 sys.exit()
 
@@ -579,14 +728,37 @@ print('The MSE score between the model and the test data: ', MSE)
 print('The R2 score between the model and the test data: ', R2)
 print('The error sigma: ' + str(np.mean(np.sqrt(variance))) + '+-' + str(2*np.std(np.sqrt(variance), ddof = 0)))
 
-print(latex_print(X = Beta, errors = cf*np.std(all_beta, ddof = 0, axis = 0), text = text))
+#print(latex_print(X = Beta, errors = cf*np.std(all_beta, ddof = 0, axis = 0), text = text))
 
 
 
 
 
 
-
+"""
+10
+11
+12
+13
+14
+Method =  Ridge
+Minimum lambda for polynomial 10:  0.02410460393808425 0.978535039354087
+Minimum lambda for polynomial 11:  0.03069728738183665 0.9784440766660274
+Minimum lambda for polynomial 12:  0.03840608157258118 0.9783993247392435
+Minimum lambda for polynomial 13:  0.046190216728640904 0.978384914706762
+Minimum lambda for polynomial 14:  0.05327212243229622 0.9783860120228745
+10
+11
+12
+13
+14
+Method =  Lasso
+Minimum lambda for polynomial 10:  9.323951375406328e-05 0.9797299269987565
+Minimum lambda for polynomial 11:  9.664958643142134e-05 0.9798853492177045
+Minimum lambda for polynomial 12:  5.2625956208031766e-05 0.9799574657766709
+Minimum lambda for polynomial 13:  5.8613816451402846e-05 0.9799138777804579
+Minimum lambda for polynomial 14:  6.619116119411213e-05 0.9799006497293551
+"""
 
 
 

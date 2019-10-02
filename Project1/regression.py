@@ -257,19 +257,19 @@ class regression(object):
 
         return np.reshape(beta, (len(beta), 1))
 
-    def Lasso(self, lam = 1, z = 2, X ='None', max_iter=1000):
+    def Lasso(self, lam = 1, z = 2, X ='None', max_iter=1001, precompute = False):
         ## TODO: Check this function
         if type(X) == type('None'):
             X = np.copy(self.X)
         if type(z) == type(2):
             z = np.copy(self.z)
         z = np.ravel(z)
-        reg = Lasso(alpha = lam, fit_intercept = True, max_iter = max_iter).fit(X, np.ravel(z))
+        reg = Lasso(alpha = lam, fit_intercept = True, max_iter = max_iter, precompute = precompute).fit(X, np.ravel(z))
         beta = reg.coef_
         beta[0] += reg.intercept_
         return np.reshape(beta, (len(beta), 1))
 
-    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = True, random_fold = False, max_iter = 2000):
+    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = True, random_fold = False, max_iter = 1001, precompute = False):
         ## TODO: Get done
         if type(X) == type('None'):
             X = np.copy(self.X)
@@ -316,11 +316,11 @@ class regression(object):
             if method2 == 'Ridge':
                 betaa = self.Ridge(z = z[train_indexs], X = X[train_indexs], lam = lam)
             if method2 == 'Lasso':
-                betaa = self.Lasso(z = z[train_indexs], X = X[train_indexs], lam = lam, max_iter = max_iter)
+                betaa = self.Lasso(z = z[train_indexs], X = X[train_indexs], lam = lam, max_iter = max_iter, precompute = precompute)
 
             beta[j] = np.ravel(betaa)
-            z_tilde = self.z_tilde(betaa, X[test_indexs])
-            z_tilde2 = self.z_tilde(betaa, X[train_indexs])
+            z_tilde = np.ravel(self.z_tilde(betaa, X[test_indexs]))
+            z_tilde2 = np.ravel(self.z_tilde(betaa, X[train_indexs]))
 
 
             bias[j] += self.bias(z = z[test_indexs], z_tilde = z_tilde)
@@ -342,6 +342,69 @@ class regression(object):
         #print(np.std(beta, axis = 0))
 
         return np.mean(beta, axis = 0), MSE_R2D2, beta, np.array(variances), np.mean(bias), np.mean(var)
+
+    def lambda_best_fit(self, method, fold = 4, n_lambda = 10001, l_min = -5.5, l_max = -0.5, random_num = True, use_seed = False, seed = 42, X = 'None', z = 2, max_iter = 1001, full = False, precompute = True):
+
+        lambdas = np.array([0] + np.logspace(l_min, l_max, n_lambda).tolist())
+        if type(X) == type('None'):
+            X = np.copy(self.X)
+            beta_len = len(self.X[0])
+        else:
+            beta_len = len(X[0])
+        if type(z) == type(2):
+            z = np.copy(np.ravel(self.z))
+
+        if fold > len(X):
+            fold = len(X)
+
+        if use_seed == True:
+            np.random.seed(seed)
+
+        a = np.arange(len(np.ravel(z)))
+        if random_num:
+            np.random.shuffle(a)
+
+        folds = np.array_split(a, fold)
+
+        errors = np.zeros((2, fold, len(lambdas)))
+
+
+        for j in range(fold):
+
+            X_test = np.copy(X[folds[j]])
+            z_test = np.copy(z[folds[j]])
+
+            X_train = np.delete(np.copy(X), folds[j], axis = 0)
+            z_train = np.delete(np.copy(z), folds[j])
+
+            if method == 'Ridge':
+                U, s, VT = np.linalg.svd(X_train, full_matrices = False)
+
+            for i in range(len(lambdas)):
+
+                if method == 'Ridge':
+                    beta = np.ravel(np.dot(VT.T, U.T @ z_train.T*s*np.power(s**2 + lambdas[i], -1)))
+                if method == 'Lasso':
+                    beta = np.ravel(self.Lasso(z = z_train, X = X_train, lam = lambdas[i], max_iter = max_iter, precompute = precompute))
+
+                if full == True:
+                    z_tilde = np.ravel(self.z_tilde(beta = beta, X = X))
+                    MSE = self.MSE(z = z, z_tilde = z_tilde)
+                    R2 = self.R_squared(z = z, z_tilde = z_tilde)
+                else:
+                    z_tilde = np.ravel(self.z_tilde(beta = beta, X = X_test))
+                    MSE = self.MSE(z = z_test, z_tilde = z_tilde)
+                    R2 = self.R_squared(z = z_test, z_tilde = z_tilde)
+
+                errors[0, j, i] = MSE
+                errors[1, j, i] = R2
+        index_mse = np.mean(errors[0], axis = 0).argmin()
+        index_r2 = np.mean(errors[1], axis = 0).argmax()
+
+        lambda_min = lambdas[int((index_mse + index_r2)/2)]
+        return lambda_min, errors, lambdas
+
+
 
 
 
