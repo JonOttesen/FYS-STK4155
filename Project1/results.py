@@ -618,16 +618,16 @@ zl = FrankeFunction(xl, yl) + np.random.normal(0, 1, size = xl.shape)
 #varying_lamda(x, y, z, lambda_min = -4, lambda_max = -0.5, n_lambda = 2001, k = [10, 11, 12, 13, 14], method = 'Ridge', save_fig = 'Franke_ridge_very_high_poly')
 #varying_lamda(x, y, z, lambda_min = -5, lambda_max = -3.8, n_lambda = 1001, k = [10, 11, 12, 13, 14], method = 'Lasso', max_iter = 1000, save_fig = 'Franke_lasso_very_high_poly')
 
-fig_2_11V2(xl, yl, z = zl, complexity = 15, N = 50, method = 'OLS', first_poly = 0, save_fig = 'large_n')
-
-sys.exit()
-
-fig_2_11V2(x, y, z = z, complexity = 15, N = 50, method = 'OLS', first_poly = 0)
-fig_2_11V2(x, y, z = z, complexity = 15, N = 50, method = 'Ridge', first_poly = 0, lam = 1e-3)
-fig_2_11V2(x, y, z = z, complexity = 15, N = 50, method = 'Lasso', first_poly = 0, lam = 1e-5)
-bias_var(x, y, z = z, complexity = 14, N = 100, method = 'OLS', train = 0.7, first_poly = 1)
-bias_var(x, y, z = z, complexity = 14, N = 100, method = 'Ridge', train = 0.7, first_poly = 1, lam = 1e-3)
-bias_var(x, y, z = z, complexity = 14, N = 100, method = 'Lasso', train = 0.7, first_poly = 1, lam = 1e-5)
+#fig_2_11V2(xl, yl, z = zl, complexity = 15, N = 50, method = 'OLS', first_poly = 0, save_fig = 'large_n')
+#
+#sys.exit()
+#
+#fig_2_11V2(x, y, z = z, complexity = 15, N = 50, method = 'OLS', first_poly = 0)
+#fig_2_11V2(x, y, z = z, complexity = 15, N = 50, method = 'Ridge', first_poly = 0, lam = 1e-3)
+#fig_2_11V2(x, y, z = z, complexity = 15, N = 50, method = 'Lasso', first_poly = 0, lam = 1e-5)
+#bias_var(x, y, z = z, complexity = 14, N = 100, method = 'OLS', train = 0.7, first_poly = 1)
+#bias_var(x, y, z = z, complexity = 14, N = 100, method = 'Ridge', train = 0.7, first_poly = 1, lam = 1e-3)
+#bias_var(x, y, z = z, complexity = 14, N = 100, method = 'Lasso', train = 0.7, first_poly = 1, lam = 1e-5)
 
 
 #plot3d(x, y, z, savefig = 'Frankewnoise.png')
@@ -809,7 +809,6 @@ print('The error sigma: ' + str(np.mean(np.sqrt(variance))) + '+-' + str(cf*np.s
 
 print(latex_print(X = Beta, errors = cf*np.std(all_beta, ddof = 0, axis = 0), text = text))
 
-sys.exit()
 
 lambda_ridge_best = 0.03090857
 lambda_lasso_best = 3.77266503e-05
@@ -835,7 +834,7 @@ variance = np.sqrt(model_ols.sigma_squared(z = z, z_tilde = z_tilde_ols))
 variance_beta_ols = model_ols.beta_variance(sigma_squared = variance**2)*cf
 error = np.zeros((3, ))
 
-for i in range(3):
+"""for i in range(3):
     #plt.title('Colormesh plot of the ' + ['OLS', 'Ridge', 'Lasso'][i] + ' model.')
     #plt.pcolormesh(x, y, [z_tilde_ols.reshape(np.shape(x)), z_tilde_Ridge.reshape(np.shape(x)), z_tilde_Lasso.reshape(np.shape(x))][i])
     #plt.show()
@@ -844,6 +843,37 @@ for i in range(3):
     title = ['OLS', 'Ridge', 'Lasso'][i])
 
 model = regression(x, y, z, split = True, k = 5, train = 0.7, seed = 42)  #Dont really need, but I am to lazy to change my typing mistake when creating error
+error = np.array([[model.MSE(z_tilde = z_tilde_ols, z = z_real), model.MSE(z_tilde = z_tilde_ols, z = z), model.R_squared(z_tilde = z_tilde_ols, z = z_real), model.R_squared(z_tilde = z_tilde_ols, z = z)],
+[model.MSE(z_tilde = z_tilde_Ridge, z = z_real), model.MSE(z_tilde = z_tilde_Ridge, z = z), model.R_squared(z_tilde = z_tilde_Ridge, z = z_real), model.R_squared(z_tilde = z_tilde_Ridge, z = z)],
+[model.MSE(z_tilde = z_tilde_Lasso, z = z_real), model.MSE(z_tilde = z_tilde_Lasso, z = z), model.R_squared(z_tilde = z_tilde_Lasso, z = z_real), model.R_squared(z_tilde = z_tilde_Lasso, z = z)]])
+
+print(latex_print(error, text2, decimal = 4))"""
+
+
+model_ridge = regression(x, y, z, split = False, k = 13, train = 0.7, seed = 42)
+model_ridge.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
+Beta_ridge = model_ridge.Ridge(lam = lambda_ridge_best)
+z_tilde_Ridge = model_ridge.z_tilde(Beta_ridge, X = model_ridge.X_full)
+variance = np.sqrt(model_ridge.sigma_squared(z = z, z_tilde = z_tilde_Ridge))
+variance_beta_ridge = model_ridge.beta_variance(sigma_squared = variance**2, lam = lambda_ridge_best)*cf
+
+model_lasso = regression(x, y, z, split = False, k = 15, train = 0.7, seed = 42)
+Beta_lasso = model_lasso.Lasso(lam = lambda_lasso_best)
+z_tilde_Lasso = model_lasso.z_tilde(Beta_lasso, X = model_lasso.X_full)
+variance = np.sqrt(model_lasso.sigma_squared(z = z, z_tilde = z_tilde_Lasso))
+variance_beta_lasso = model_lasso.beta_variance(sigma_squared = variance**2, lam = lambda_lasso_best)*cf
+
+model_ols = regression(x, y, z, split = False, k = 4, train = 0.7, seed = 42)
+model_ols.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
+Beta_ols = model_ols.OLS()
+z_tilde_ols = model_ols.z_tilde(Beta_ols, X = model_ols.X_full)
+variance = np.sqrt(model_ols.sigma_squared(z = z, z_tilde = z_tilde_ols))
+variance_beta_ols = model_ols.beta_variance(sigma_squared = variance**2)*cf
+error = np.zeros((3, ))
+
+
+model = regression(x, y, z, split = True, k = 5, train = 0.7, seed = 42)  #Dont really need, but I am to lazy to change my typing mistake when creating error
+
 error = np.array([[model.MSE(z_tilde = z_tilde_ols, z = z_real), model.MSE(z_tilde = z_tilde_ols, z = z), model.R_squared(z_tilde = z_tilde_ols, z = z_real), model.R_squared(z_tilde = z_tilde_ols, z = z)],
 [model.MSE(z_tilde = z_tilde_Ridge, z = z_real), model.MSE(z_tilde = z_tilde_Ridge, z = z), model.R_squared(z_tilde = z_tilde_Ridge, z = z_real), model.R_squared(z_tilde = z_tilde_Ridge, z = z)],
 [model.MSE(z_tilde = z_tilde_Lasso, z = z_real), model.MSE(z_tilde = z_tilde_Lasso, z = z), model.R_squared(z_tilde = z_tilde_Lasso, z = z_real), model.R_squared(z_tilde = z_tilde_Lasso, z = z)]])

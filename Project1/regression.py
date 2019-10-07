@@ -106,11 +106,14 @@ class regression(object):
         N = len(x)
         l = int((k + 1)*(k + 2)/2)		# Number of elements in beta
         X = np.ones((N, l))
+        polynomial_str = np.chararray(l)
 
         for i in range(1, k + 1):
             q = int((i)*(i + 1)/2)
             for k in range(i + 1):
                 X[:,q+k] = x**(i-k) * y**k
+                polynomial_str[q + k] = 'x^' + str(i-k) + '*y^' + str(k)
+        self.polynomial_str = polynomial_str
 
         return X
 
