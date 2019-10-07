@@ -47,7 +47,7 @@ class latex_print():
             for k in range(len(self.rounded)):
                 if k == 0:
                     try:
-                        printing += self.text[i] + ' & '
+                        printing += str(self.text[i]) + ' & '
                     except:
                         pass
                 if self.errors_rounded[k,i] == 0:

@@ -60,6 +60,7 @@ class regression(object):
         self.X_full = self.design_matrix(k)
         if split == True:
             self.X, self.X_test, self.z, self.z_test = self.train_test(X = np.copy(self.X_full), z = z, train = train, seed = seed)
+            _, _, self.z_real_train, self.z_real_test = self.train_test(X = np.copy(self.X_full), z = z, train = train, seed = seed)
         else:
             self.X = self.design_matrix(k)
 
@@ -125,8 +126,6 @@ class regression(object):
         return (np.mean((np.mean(z_tilde) - z_tilde)**2))
 
     def bias(self, z_tilde, z):
-        z = np.ravel(z)
-        z_tilde = np.ravel(z_tilde)
         bia = np.mean((z - np.mean(z_tilde)))
         return bia**2
 
@@ -269,8 +268,9 @@ class regression(object):
         beta[0] += reg.intercept_
         return np.reshape(beta, (len(beta), 1))
 
-    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, train = False, random_num = True, random_fold = False, max_iter = 1001, precompute = False):
+    def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, random_num = True, max_iter = 1001, precompute = False):
         ## TODO: Get done
+
         if type(X) == type('None'):
             X = np.copy(self.X)
             beta_len = len(self.X[0])
@@ -279,63 +279,53 @@ class regression(object):
         if type(z) == type(2):
             z = np.copy(np.ravel(self.z))
 
-        if fold > len(X) or fold < int(1/(1-train)):
+        if fold > len(X):
             fold = len(X)
-
-        fold_indexes = np.arange(fold)
-        if random_fold:
-            np.random.shuffle(fold_indexes)
 
         a = np.arange(len(np.ravel(z)))
         if random_num:
             np.random.shuffle(a)
         folds = np.array_split(a, fold)
 
-        if type(train) == type(0.8):
-            folds_split = np.array_split(fold_indexes, int(fold/(fold - train*fold) + 1))
-        else:
-            folds_split = np.array_split(fold_indexes, fold)
 
-        beta = np.zeros((len(folds_split), beta_len))
-        errors = np.zeros((len(folds_split), 4))
+        beta = np.zeros((fold, beta_len))
+        errors = np.zeros((fold, 4))
 
-        train_indexs = []
-        test_indexs = []
         variances = []
-        bias = np.zeros(len(folds_split))
+        bias = np.zeros(fold)
         var = np.zeros_like(bias)
-        for j in range(len(folds_split)):
-            for i in fold_indexes:
-                if i in folds_split[j]:
-                    test_indexs += folds[i].tolist()
-                else:
-                    train_indexs += folds[i].tolist()
+
+        for j in range(fold):
+
+            X_test = np.copy(X[folds[j]])
+            z_test = np.copy(z[folds[j]])
+
+            X_train = np.delete(np.copy(X), folds[j], axis = 0)
+            z_train = np.delete(np.copy(z), folds[j])
+            z_real_test = np.ravel(np.copy(self.z))[folds[j]]
 
             if method2 == 'OLS':
-                betaa = self.OLS(z[train_indexs], X[train_indexs])
+                betaa = self.OLS(z_train, X_train)
             if method2 == 'Ridge':
-                betaa = self.Ridge(z = z[train_indexs], X = X[train_indexs], lam = lam)
+                betaa = self.Ridge(z = z_train, X = X_train, lam = lam)
             if method2 == 'Lasso':
-                betaa = self.Lasso(z = z[train_indexs], X = X[train_indexs], lam = lam, max_iter = max_iter, precompute = precompute)
+                betaa = self.Lasso(z = z_train, X = X_train, lam = lam, max_iter = max_iter, precompute = precompute)
 
             beta[j] = np.ravel(betaa)
-            z_tilde = np.ravel(self.z_tilde(betaa, X[test_indexs]))
-            z_tilde2 = np.ravel(self.z_tilde(betaa, X[train_indexs]))
+            z_tilde = np.ravel(self.z_tilde(betaa, X_test))
+            z_tilde2 = np.ravel(self.z_tilde(betaa, X_train))
 
 
-            bias[j] += self.bias(z = z[test_indexs], z_tilde = z_tilde)
+            bias[j] = self.bias(z = z_real_test, z_tilde = z_tilde)
+            var[j] = self.variance(z_tilde)
 
-            var[j] += self.variance(z_tilde)
 
+            errors[j, 0] = self.MSE(z_tilde, z_test)
+            errors[j, 1] = self.R_squared(z_tilde, z_test)
+            errors[j, 2] = self.MSE(z_tilde2, z_train)
+            errors[j, 3] = self.R_squared(z_tilde2, z_train)
+            variances.append(self.sigma_squared(z_tilde = self.z_tilde(betaa, X_train), z = z_train, p = len(X_train[0])))
 
-            errors[j, 0] = self.MSE(z_tilde, z[test_indexs])
-            errors[j, 1] = self.R_squared(z_tilde, z[test_indexs])
-            errors[j, 2] = self.MSE(z_tilde2, z[train_indexs])
-            errors[j, 3] = self.R_squared(z_tilde2, z[train_indexs])
-            variances.append(self.sigma_squared(z_tilde = self.z_tilde(betaa, X[train_indexs]), z = z[train_indexs], p = len(X[train_indexs][0])))
-
-            train_indexs = []
-            test_indexs = []
 
         MSE_R2D2 = errors
 
@@ -343,7 +333,7 @@ class regression(object):
 
         return np.mean(beta, axis = 0), MSE_R2D2, beta, np.array(variances), np.mean(bias), np.mean(var)
 
-    def lambda_best_fit(self, method, fold = 4, n_lambda = 10001, l_min = -5.5, l_max = -0.5, random_num = True, use_seed = False, seed = 42, X = 'None', z = 2, max_iter = 1001, full = False, precompute = True):
+    def lambda_best_fit(self, method, fold = 4, n_lambda = 1001, l_min = -5.5, l_max = -0.5, random_num = True, use_seed = False, seed = 42, X = 'None', z = 2, max_iter = 1001, full = False, precompute = True):
 
         lambdas = np.array([0] + np.logspace(l_min, l_max, n_lambda).tolist())
         if type(X) == type('None'):
@@ -367,7 +357,7 @@ class regression(object):
         folds = np.array_split(a, fold)
 
         errors = np.zeros((2, fold, len(lambdas)))
-
+        counter = 0
 
         for j in range(fold):
 
@@ -396,13 +386,20 @@ class regression(object):
                     MSE = self.MSE(z = z_test, z_tilde = z_tilde)
                     R2 = self.R_squared(z = z_test, z_tilde = z_tilde)
 
+                if MSE.argmin() != 0:
+                    print('yo')
+                    print(MSE.argmin())
+
                 errors[0, j, i] = MSE
                 errors[1, j, i] = R2
+
+
         index_mse = np.mean(errors[0], axis = 0).argmin()
         index_r2 = np.mean(errors[1], axis = 0).argmax()
 
         lambda_min = lambdas[int((index_mse + index_r2)/2)]
-        return lambda_min, errors, lambdas
+
+        return lambda_min, errors, lambdas,
 
 
 
