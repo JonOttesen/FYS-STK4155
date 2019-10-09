@@ -160,7 +160,7 @@ class regression(object):
         bia = np.mean((z - np.mean(z_tilde)))
         return bia**2
 
-    def sigma_squared(self, z_tilde, z, p = 'trala'):
+    def sigma_squared(self, z_tilde, z, p = 'polynomial order'):
         '''
         Calculates the variance of the inevitable error
         z_tilde is the created model, must be given

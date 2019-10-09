@@ -28,6 +28,9 @@ if not os.path.isdir(results_dir):
 #np.random.seed(42)
 
 def plot3d(x, y, z, savefig = True):
+    """
+    3d plot of the given x, y, z meshgrid
+    """
 
     fig = plt.figure(figsize=(12, 7))
     ax = fig.gca(projection='3d')
@@ -53,6 +56,9 @@ def plot3d(x, y, z, savefig = True):
     plt.show()
 
 def plot3d2(x, y, z, z2):
+    '''
+    Not used here
+    '''
 
     fig = plt.figure()
     ax = fig.add_subplot(121, projection = '3d')
@@ -81,6 +87,10 @@ def plot3d2(x, y, z, z2):
     plt.show()
 
 def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, folds = 5, method = 'OLS', seed = 42, lam = 0, train = 0.7, split = False, save_fig = '', N = 5):
+    """
+    recreates figure 2.11 from the book as asked in exercise c using k-fold N times with random indexes. The plot is the mean error estimates of N times
+    Unlike for results it does accept lambdas for differet degrees
+    """
 
     errors = np.zeros((4, complexity + 1))
 
@@ -89,10 +99,6 @@ def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, folds = 5, meth
     if type(lam) != type([1]) and type(lam) != type(np.array([1])):
         lam = lam*np.ones(complexity + 1)
 
-    """if type(z) == type('None'):
-        z_real = FrankeFunction(x, y)
-    else:
-        z_real = np.copy(z)"""
     MSE = np.zeros(complexity + 1)
 
     for i in range(complexity + 1):
@@ -143,9 +149,14 @@ def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, folds = 5, meth
     return errors[0]
 
 
-def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None, method = 'Ridge', split = True, train = 0.7, seed = 42, max_iter = 2001, folds = 5):
+def varying_lamda_using_k_fold(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None, method = 'Ridge', split = True, train = 0.7, seed = 42, max_iter = 2001, folds = 5):
+    """
+    Varies lambda between lambda_min and lambda_max and plots the MSE and R2 for the test data as a function of lambda
+    k-fold cross validation is used here unlike for results.py in the lambda_best_fit.
+    """
 
     lambdas = np.array([0] + np.logspace(lambda_min, lambda_max, n_lambda).tolist())
+
     polynomials = np.array(k)
     X, Y = np.meshgrid(lambdas, polynomials)
     error = np.zeros((2, len(polynomials), n_lambda + 1))
@@ -194,127 +205,13 @@ def varying_lamda(x, y, z, lambda_min, lambda_max, n_lambda, k, save_fig = None,
         pass
     plt.show()
 
-def best_fit(x, y, z, p = list(range(3, 15)), folds = 4, train = 0.7, seed = 42, n_lambda = 2001, n = 1, m = 1):
-
-    lambdas = np.array([0] + np.logspace(-5.5, -1, n_lambda).tolist())
-    polynomials = np.array(p)
-
-    X, Y = np.meshgrid(lambdas, polynomials)
-    MSE = np.zeros(np.shape(X))
-
-    lambda_min_ridge = np.zeros(len(polynomials))
-    lambda_min_lasso = np.zeros(len(polynomials))
-
-    R2_data = np.zeros((3, len(polynomials)))
-    MSE_data = np.zeros((3, len(polynomials)))
-
-
-    for i in range(len(polynomials)):
-        print(i + polynomials[0])
-
-        ridge_sum = 0
-        lasso_sum = 0
-        model = regression(x, y, z, split = True, train = train, seed = seed, k = polynomials[i])
-        z_test = np.ravel(np.copy(model.z_test))
-        for j in range(n):
-            ridge_sum += model.lambda_best_fit(method = 'Ridge', fold = folds, random_num = True, n_lambda = n_lambda)[0]
-        for j in range(m):
-            lasso_sum += model.lambda_best_fit(method = 'Lasso', fold = folds, n_lambda = n_lambda)[0]
-        lambda_min_ridge[i] = ridge_sum/n
-        lambda_min_lasso[i] = lasso_sum/m
-
-        _,_, a, z_real_test = model.train_test(X = model.X_full, z = z_real, train = 0.7, seed = seed)  #Both the training set and the test set for z_real in that order in list/tuple
-
-        Beta_ols = model.OLS()
-        Beta_ridge = model.Ridge(lam = lambda_min_ridge[i])
-        Beta_lasso = model.Lasso(lam = lambda_min_lasso[i], max_iter = 1001)
-
-        z_tilde_OLS = model.z_tilde(Beta_ols, X = model.X_test)
-        z_tilde_Ridge = model.z_tilde(Beta_ridge, X = model.X_test)
-        z_tilde_Lasso = model.z_tilde(Beta_lasso, X = model.X_test)
-
-        R2_data[0, i] = model.R_squared(z_tilde = z_tilde_OLS, z = z_test)
-        R2_data[1, i] = model.R_squared(z_tilde = z_tilde_Ridge, z = z_test)
-        R2_data[2, i] = model.R_squared(z_tilde = z_tilde_Lasso, z = z_test)
-
-        MSE_data[0, i] = model.MSE(z_tilde = z_tilde_OLS, z = z_test)
-        MSE_data[1, i] = model.MSE(z_tilde = z_tilde_Ridge, z = z_test)
-        MSE_data[2, i] = model.MSE(z_tilde = z_tilde_Lasso, z = z_test)
-
-    _, _, lambdas = model.lambda_best_fit(method = 'Ridge', fold = folds, random_num = True)
-
-    min_MSE = [[np.argmin(MSE_data[0]), np.argmin(MSE_data[1]), np.argmin(MSE_data[2])]]
-    min_R2 = [[np.argmin(MSE_data[0]), np.argmin(MSE_data[1]), np.argmin(MSE_data[2])]]
-
-    print('Minimum MSE with Data, OLS: ', np.min(MSE_data[0]), ' Ridge: ', np.min(MSE_data[1]), ' Lasso: ', np.min(MSE_data[2]))
-    print('With polynoms: ', np.argmin(MSE_data[0]) + polynomials[0], np.argmin(MSE_data[1]) + polynomials[0], np.argmin(MSE_data[2]) + polynomials[0])
-    print('----------------------------------------------------------------------------------------------')
-    print('Maximum R2 with Frank, OLS: ', np.max(R2[0]), ' Ridge: ', np.max(R2[1]), ' Lasso: ', np.max(R2[2]))
-    print('With polynoms: ', np.argmax(R2[0]) + polynomials[0], np.argmax(R2[1]) + polynomials[0], np.argmax(R2[2]) + polynomials[0])
-    print('----------------------------------------------------------------------------------------------')
-    print('Maximum R2 with Frank, OLS: ', np.max(R2_data[0]), ' Ridge: ', np.max(R2_data[1]), ' Lasso: ', np.max(R2_data[2]))
-    print('With polynoms: ', np.argmax(R2_data[0]) + polynomials[0], np.argmax(R2_data[1]) + polynomials[0], np.argmax(R2_data[2]) + polynomials[0])
-    print('----------------------------------------------------------------------------------------------')
-
-    error_mins = np.array([[np.min(MSE[0]), np.min(MSE[1]), np.min(MSE[2])],
-    [np.min(MSE_data[0]), np.min(MSE_data[1]), np.min(MSE_data[2])],
-    [np.max(R2[0]), np.max(R2[1]) , np.max(R2[2])],
-    [np.max(R2_data[0]), np.max(R2_data[1]), np.max(R2_data[2])],
-    [np.argmin(MSE[0]) + polynomials[0], np.argmin(MSE[1]) + polynomials[0], np.argmin(MSE[2]) + polynomials[0]],
-    [np.argmin(MSE_data[0]) + polynomials[0], np.argmin(MSE_data[1]) + polynomials[0], np.argmin(MSE_data[2]) + polynomials[0]],
-    [np.argmax(R2[0]) + polynomials[0], np.argmax(R2[1]) + polynomials[0], np.argmax(R2[2]) + polynomials[0]],
-    [np.argmax(R2_data[0]) + polynomials[0], np.argmax(R2_data[1]) + polynomials[0], np.argmax(R2_data[2]) + polynomials[0]]]).T
-
-    text = ['MSE Franke', 'MSE Data','R\(^2\) Franke', 'R\(^2\) Data']
-    print(latex_print(error_mins, text = text))
-
-    print('Ridge lambda, lowest indexes for Data: ', np.argmin(MSE_data[2]))
-    print(lambda_min_ridge)
-    print('Lasso lambda, lowest indexes for Data: ', np.argmin(R2_MSE[2]))
-    print(lambda_min_lasso)
-
-    #Noise Franke
-
-    plt.plot(polynomials, R2_data[0], 'go--', label = 'OLS', color = 'red')
-    plt.plot(polynomials, R2_data[1], 'go--', label = 'Ridge', color = 'blue')
-    plt.plot(polynomials, R2_data[2], 'go--', label = 'Lasso', color = 'green')
-    plt.title('R2 error between the model and data', fontsize = 14)
-    plt.ylabel('R2')
-    plt.xlabel('Polynomial degree')
-    plt.legend()
-    plt.tight_layout()
-
-    #plt.savefig(results_dir + 'ridge_lasso_high_order_poly_data.png')
-
-    plt.show()
-
-    plt.plot(polynomials, MSE_data[0], 'go--', label = 'OLS', color = 'red')
-    plt.plot(polynomials, MSE_data[1], 'go--', label = 'Ridge', color = 'blue')
-    plt.plot(polynomials, MSE_data[2], 'go--', label = 'Lasso', color = 'green')
-    plt.title('MSE for test data between the model and data', fontsize = 14)
-    plt.ylabel('MSE')
-    plt.xlabel('Polynomial degree')
-    plt.legend()
-    plt.tight_layout()
-
-    #plt.savefig(results_dir + 'ridge_lasso_high_order_polyMSE_data.png')
-
-    plt.show()
-
-    #Polynomial and lambda
-
-    plt.plot(polynomials, lambda_min_ridge, 'go--', label = 'Ridge', color = 'blue')
-    plt.plot(polynomials, lambda_min_lasso, 'go--', label = 'Lasso', color = 'green')
-
-    plt.title('The \'best\' lambda pr polynomial')
-    plt.ylabel('Lambda')
-    plt.xlabel('Polynomial degree')
-    plt.legend()
-    plt.tight_layout()
-    #plt.savefig(results_dir + 'ridge_lasso_lambda_poly.png')
-    plt.show()
 
 def lambdas_evo(x, y, z, N = 20, max_poly = 16, n_lambda = 1001):
+    """
+    Finds the optimal lambda values for each polynomial complexity using k-fold cross validation.
+    This is done N times with random indexes and the mean lambda pr complexity is calculated.
+    """
+
     N = N
     polynomials = np.arange(1, max_poly, 1)
     lambdas = np.zeros((len(polynomials), N))
@@ -345,6 +242,9 @@ def lambdas_evo(x, y, z, N = 20, max_poly = 16, n_lambda = 1001):
 
 
 def rebin(a, shape):
+    """
+    Resamples my data to a smaller version
+    """
     sh = shape[0],a.shape[0]//shape[0],shape[1],a.shape[1]//shape[1]
     return a.reshape(sh).mean(-1).mean(1)
 
@@ -374,30 +274,36 @@ z = np.copy(terrain)
 
 cf = 1.96
 
-#lam = lambdas_evo(x, y, z, N = 50, max_poly = 14, n_lambda = 201)
-try:
+
+#Finding the ideal lambdas for polynomials between 0 and 14, it does however take a long time to run
+lam = lambdas_evo(x, y, z, N = 50, max_poly = 14, n_lambda = 201)
+try:  #Lambdas evo takes a long time so I saved them here.
     lam = np.array(lam.tolist() + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])  #Make sure there is enough lambda parameters
 except:
     lam = np.array([6.26170675e-02, 3.32300860e-02, 1.63185352e-03, 1.61525982e-04, 2.26129915e-05, 1.46577720e-06, 5.05273531e-08, 2.15470556e-09,4.85918413e-11,
     2.13967089e-12, 1.73002729e-13, 2.00000000e-16, 0.00000000e+00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
-#np.random.seed(42)
-#error1 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'OLS', first_poly = 1, N = 10)
-#np.random.seed(42)
-#error2 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'Ridge', first_poly = 1, lam = lam, save_fig = 'ridge', N = 10)
 
-#varying_lamda(x, y, z, lambda_min = -9, lambda_max = -7, n_lambda = 1001, k = [14, 15, 16], method = 'Ridge', max_iter = 1001, save_fig = 'Ridge_bad')
-#varying_lamda(x, y, z, lambda_min = -11, lambda_max = -9, n_lambda = 11, k = [14, 15, 16], method = 'Lasso', max_iter = 1001, save_fig = 'Lasso_bad')
+#Creating fig.2.11 from  the book with both OLS and the ideal lambdas for ridge above with k-fold for N = 10 random indexes runs
+np.random.seed(42)  #Ensure equal randomized folds
+error1 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'OLS', first_poly = 1, N = 10)
+np.random.seed(42)  #Ensure equal randomized folds
+error2 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'Ridge', first_poly = 1, lam = lam, save_fig = 'ridge', N = 10)
 
-#error_test = np.array([error1.tolist(), error2.tolist()])
-#text = list(range(1, 21))
-#print(latex_print(X = error_test, decimal = 8, text = text))
+error_test = np.array([error1.tolist(), error2.tolist()])
+text = list(range(1, 21))
+print(latex_print(X = error_test, decimal = 8, text = text))  #Table print of the test errors
+
+#Plots of how the test error changes for different lambdas in ridge and lasso
+varying_lamda_using_k_fold(x, y, z, lambda_min = -9, lambda_max = -7, n_lambda = 1001, k = [14, 15, 16], method = 'Ridge', max_iter = 1001, save_fig = 'Ridge_bad')
+varying_lamda_using_k_fold(x, y, z, lambda_min = -11, lambda_max = -9, n_lambda = 11, k = [14, 15, 16], method = 'Lasso', max_iter = 1001, save_fig = 'Lasso_bad')
+
 
 #Exercise a
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------
 #Memo to self, this part work great nothing wrong just pointless to print this all the time
 
-model_not_split = regression(x, y, z, split = False, k = 5)
+model_not_split = regression(x, y, z, split = False, k = 15)
 model_not_split.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
 print(model_not_split.polynomial_str)
 sys.exit()
@@ -495,7 +401,7 @@ lambda_ridge = 1e-8
 lambda_lasso = 1e-8
 
 #Histogram creation
-"""
+
 fold = [10]
 MSE_error = []  #Method, fold index and MSE for data set test or real z test
 i = 0
@@ -579,7 +485,10 @@ for folds in fold:
     plt.show()
 
     i += 1
-"""
+
+
+#Using k-fold to calculate errors and the variance for the inevitable error
+
 error_print = np.zeros((3,4))
 error_print_std = np.zeros((3,4))
 
