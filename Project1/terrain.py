@@ -80,7 +80,7 @@ def plot3d2(x, y, z, z2):
     fig.colorbar(surf, shrink=0.5, aspect=5)
     plt.show()
 
-def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, folds = 5, method = 'OLS', seed = 42, lam = 0, train = 0.7, split = False, save_fig = ''):
+def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, folds = 5, method = 'OLS', seed = 42, lam = 0, train = 0.7, split = False, save_fig = '', N = 5):
 
     errors = np.zeros((4, complexity + 1))
 
@@ -99,12 +99,13 @@ def fig_2_11V2(x, y, z, first_poly = 4, complexity = 10, k = 20, folds = 5, meth
         print(i)
         model = regression(x, y, z, k = first_poly + i, split = split, train = train, seed = seed)
 
-        beta, MSE_R2D2, _, _, _, _ = model.k_cross(fold = folds, method2 = method, lam = float(lam[i]), random_num = True)
-
-        errors[:, i] = np.mean(MSE_R2D2, axis = 0)
+        for j in range(N):
+            beta, MSE_R2D2, _, _, _, _ = model.k_cross(fold = folds, method2 = method, lam = float(lam[i]), random_num = True)
+            errors[:, i] += np.mean(MSE_R2D2, axis = 0)
 
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
 
+    errors /= N
     #print(bias)
     #print(variance)
     print('MSE test', errors[0])
@@ -380,25 +381,26 @@ except:
     lam = np.array([6.26170675e-02, 3.32300860e-02, 1.63185352e-03, 1.61525982e-04, 2.26129915e-05, 1.46577720e-06, 5.05273531e-08, 2.15470556e-09,4.85918413e-11,
     2.13967089e-12, 1.73002729e-13, 2.00000000e-16, 0.00000000e+00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
-np.random.seed(42)
-error1 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'OLS', first_poly = 1)
-np.random.seed(42)
-error2 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'Ridge', first_poly = 1, lam = lam, save_fig = 'ridge')
+#np.random.seed(42)
+#error1 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'OLS', first_poly = 1, N = 10)
+#np.random.seed(42)
+#error2 = fig_2_11V2(x, y, z = z, complexity = 19, folds = 5, method = 'Ridge', first_poly = 1, lam = lam, save_fig = 'ridge', N = 10)
 
 #varying_lamda(x, y, z, lambda_min = -9, lambda_max = -7, n_lambda = 1001, k = [14, 15, 16], method = 'Ridge', max_iter = 1001, save_fig = 'Ridge_bad')
-#varying_lamda(x, y, z, lambda_min = -8, lambda_max = -4, n_lambda = 11, k = [14, 15, 16], method = 'Lasso', max_iter = 1001, save_fig = 'Lasso_bad')
+#varying_lamda(x, y, z, lambda_min = -11, lambda_max = -9, n_lambda = 11, k = [14, 15, 16], method = 'Lasso', max_iter = 1001, save_fig = 'Lasso_bad')
 
-error_test = np.array([error1.tolist(), error2.tolist()])
-text = list(range(1, 21))
-print(latex_print(X = error_test, decimal = 8, text = text))
-
+#error_test = np.array([error1.tolist(), error2.tolist()])
+#text = list(range(1, 21))
+#print(latex_print(X = error_test, decimal = 8, text = text))
 
 #Exercise a
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------
 #Memo to self, this part work great nothing wrong just pointless to print this all the time
 
-model_not_split = regression(x, y, z, split = False, k = 15)
+model_not_split = regression(x, y, z, split = False, k = 5)
 model_not_split.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
+print(model_not_split.polynomial_str)
+sys.exit()
 
 Beta_Ols = model_not_split.OLS()
 Beta_ridge = model_not_split.Ridge(lam = 1e-8)
@@ -630,42 +632,11 @@ print(latex_print(text = text2, X = error_print, errors = error_print_std, decim
 
 
 
-#The best fit
 
 
-terrain_cornor_fit = np.zeros_like(terrain)
 
-mid_col = int(np.shape(terrain)[0]/2)
-mid_row = int(np.shape(terrain)[1]/2)
 
-terrain_corners = [np.copy(terrain[:mid_col, :mid_row]), np.copy(terrain[mid_col:, :mid_row]), np.copy(terrain[:mid_col, mid_row:]), np.copy(terrain[mid_col:, mid_row:])]
-MSE = np.zeros((1, 4))
-z_corners = []
 
-for i in range(4):
-    x_corner = np.linspace(0, 1, np.shape(terrain_corners[i])[1])
-    y_corner = np.linspace(0, 1, np.shape(terrain_corners[i])[0])
-    x_corner, y_corner = np.meshgrid(x_corner, y_corner)
-    z_corner = np.copy(terrain_corners[i])
-
-    model = regression(x_corner, y_corner, z_corner, split = False, k = 15)
-    model.SVD()  #Initiate SVD for the design matrix and save the U,V and Sigma as variables inside the class, just to speed things up later
-
-    Beta_Ols = model.OLS()
-
-    z_tilde_OLS = model.z_tilde(Beta_Ols).reshape(x_corner.shape)
-    MSE[0, i] = model.MSE(z = z_corner, z_tilde = z_tilde_OLS)
-    z_corners.append(z_tilde_OLS)
-
-terrain_cornor_fit[:mid_col, :mid_row] = z_corners[0]
-terrain_cornor_fit[mid_col:, :mid_row] = z_corners[1]
-terrain_cornor_fit[:mid_col, mid_row:] = z_corners[2]
-terrain_cornor_fit[mid_col:, mid_row:] = z_corners[3]
-#fig_2_11V2(x_corner, y_corner, z = z_corner, complexity = 20, N = 5, method = 'OLS', train = 0.7, first_poly = 0, save_fig = 'corner')
-print(MSE)
-print(np.mean(MSE))
-plt.pcolormesh(terrain_cornor_fit)
-plt.show()
 
 
 

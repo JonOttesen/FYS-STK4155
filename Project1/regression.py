@@ -49,8 +49,21 @@ def plot3d(x, y, z, z2):
 
 
 class regression(object):
+    '''
+    A general linear regression class that can preform OLS, ridge and lasso regression.
+    Takes the x, y and z meshgrid of the data points.
+    The k-th polynomial degree, this is the same as the polynomial degree p. Integer Number
+    split to have a training and testing data set. If this is ture it will deafult to the traning set when creating models.
+    train is the float 0-1 for how much of X that should be used for training data
+    seed is the seed for the train test split
+
+    It's recommended to call the SVD module right after initiaing the class to pre calculate the SVD.
+
+    self.z and self.X can either be the entire design_matrix or just the train part depening on split = True or split = False(entire design_matrix)
+    '''
 
     def __init__(self, x, y, z, k, split = False, train = 0.7, seed = 42):
+        self.ols_ridge_test()
         self.x = x
         self.y = y
         self.z = z
@@ -67,6 +80,9 @@ class regression(object):
         self.svd_full_matrices = True
 
     def SVD(self, gotta_go_fast = True):
+        '''
+        Used to precalculate the SVD, useful when passing different z-data sets or lambda values for the same design matrix
+        '''
 
         self.svd_done = True
         if gotta_go_fast == False:
@@ -106,7 +122,8 @@ class regression(object):
         N = len(x)
         l = int((k + 1)*(k + 2)/2)		# Number of elements in beta
         X = np.ones((N, l))
-        polynomial_str = np.chararray(l)
+        polynomial_str = ['']*l
+        polynomial_str[0] = str(1)
 
         for i in range(1, k + 1):
             q = int((i)*(i + 1)/2)
@@ -118,6 +135,11 @@ class regression(object):
         return X
 
     def z_tilde(self, beta, X = 'None'):
+        '''
+        Calculate the model with a given beta
+        X is the design matrix the model should be created with respect to. It will defult to the one used in the creation of the model
+        To use the test design matrix pass z_tilde(X = model.X_test)
+        '''
         if type(X) == type('None'):
             z_tilde = self.X_full.dot(beta)
             return z_tilde
@@ -126,14 +148,26 @@ class regression(object):
             return z_tilde
 
     def variance(self, z_tilde):
+        '''
+        Not working properly, meant to be used for bias variance tradeoff but found a better way
+        '''
         return (np.mean((np.mean(z_tilde) - z_tilde)**2))
 
     def bias(self, z_tilde, z):
+        '''
+        Not working properly, meant to be used for bias variance tradeoff but found a better way
+        '''
         bia = np.mean((z - np.mean(z_tilde)))
         return bia**2
 
-    def sigma_squared(self, z_tilde, z, p = 0):
-        if p == 0:
+    def sigma_squared(self, z_tilde, z, p = 'trala'):
+        '''
+        Calculates the variance of the inevitable error
+        z_tilde is the created model, must be given
+        z is the data set, must be given
+        p is the unbias parameter, defults to the number of polynomials
+        '''
+        if type(p) == type('str'):
             p = len(self.X[0])
 
         z = np.ravel(z)
@@ -141,6 +175,12 @@ class regression(object):
         return 1/(len(z) - p - 1)*np.sum((z_tilde - z)**2)
 
     def beta_variance(self, sigma_squared, X = 'None', lam = 0):
+        '''
+        Calculates the variance of the beta parameters using the design matrix,
+        defults to the train or entire design matrix
+        if the test design_matrix should be used an example call would be beta_variance(X = model.X_test)
+        lam  is the lambda used in the creation of the ridge/lasso model.
+        '''
         ## TODO: Make sure this works
         if type(X) == type('None'):
             if self.svd_done:  #Checks if SVD is called and no design matrix is given. This is helpful if X is large to avoid SVD calculation multiple times for multiple z-values
@@ -163,12 +203,18 @@ class regression(object):
         return np.sqrt(variance)
 
     def MSE(self, z_tilde, z):
+        '''
+        Calculates the MSE between the model and the given z
+        '''
         z = np.ravel(z)
         z_tilde = np.ravel(z_tilde)
         mse = np.mean((z - z_tilde)**2)
         return mse
 
     def R_squared(self, z_tilde, z):
+        '''
+        Calculates the R^2 between the model and the given z
+        '''
         z = np.ravel(z)
         z_tilde = np.ravel(z_tilde)
         R2D2 = 1 - np.sum((z - z_tilde)**2)/np.sum((z - np.mean(z))**2)
@@ -190,12 +236,11 @@ class regression(object):
 
     def OLS(self, z = 2, X = 'None', test = False, full_matrices = False):
         """
-        Ordinary least squares up to order x^p, y^l and x^n*y^n.
-        The general shape is [1, x^1, x^2 .., y^1, y^2 ...., x*y, x^(2)*y, x^n*y, x*y^2, x^2*y^2...]
-        p   -> Integer
-        l   -> Integer
-        n   -> Integers
-        If X is given p, n and l won't matter, the polynomial degree used in X is used, X is typically used when using test data.
+        Calculates the OLS for self.z and self.X arguments if X and z is not given,
+        it therefore defults to the training data
+        If z and X is given, full matrices is to avoid calculating the entire U matrix in SVD
+
+        test is to use the sklearn module
         """
         ## NOTE: Numpy inverse about 25% faster than scipy inverse. Nils says its more unstable tho.
         ## NOTE: Scipy svd about max 10% faster than numpy svd
@@ -233,6 +278,13 @@ class regression(object):
         return np.reshape(beta, (len(beta), 1))
 
     def Ridge(self, lam, z = 2, X = 'None'):
+        """
+        Calculates the Ridge model for self.z and self.X arguments if X and z is not given with SVD,
+        it therefore defults to the training data
+        lam is the lambda parameter
+
+        returns beta with shape [[beta1], [beta2], [beta3] ...]
+        """
 
         if type(z) == type(2):
             z = np.copy(self.z)
@@ -260,7 +312,15 @@ class regression(object):
         return np.reshape(beta, (len(beta), 1))
 
     def Lasso(self, lam = 1, z = 2, X ='None', max_iter=1001, precompute = False):
-        ## TODO: Check this function
+        """
+        Calculates the Lasso model for self.z and self.X arguments if X and z is not given with SVD,
+        it therefore defults to the training data
+        lam is the lambda parameter
+        max_iter is the number of iterations in the lasso regression
+        precompute does something idunno, but using True makes the regression go faster
+
+        returns beta with shape [[beta1], [beta2], [beta3] ...]
+        """
         if type(X) == type('None'):
             X = np.copy(self.X)
         if type(z) == type(2):
@@ -272,7 +332,23 @@ class regression(object):
         return np.reshape(beta, (len(beta), 1))
 
     def k_cross(self, X = 'None', z = 2, fold = 25, method2 = 'OLS', lam = 1, random_num = True, max_iter = 1001, precompute = False):
-        ## TODO: Get done
+        '''
+        The k-fold cross validation method, defult to the self.X and self.z arguments if they are not given
+        fold is the number of folds in the k-fold
+        method2 is the method used in k-fold
+        lam is the lambda in ridge and lasso if they are selected
+        random_num randomizes the fold indexes
+        max_inter is the number of interations in lasso
+        precompute does something idunno, but using True makes the regression for lasso go faster
+
+        returns
+        The mean of the betas calculated,
+        The mse and r2 error estimates with shape (4, folds) 0-> is the mse for test fold , 1 -> r2 for the rest fold, 2-> mse for the training folds, 3-> r2 for the trainig folds,
+        all calculated betas with shape (fold, beta_len) i.e [0,:] is the first beta,
+        np.array(variances) the mean of the variances for the invitable error,
+        np.mean(bias) doesn't work,
+        np.mean(var) doesn't work
+        '''
 
         if type(X) == type('None'):
             X = np.copy(self.X)
@@ -337,6 +413,27 @@ class regression(object):
         return np.mean(beta, axis = 0), MSE_R2D2, beta, np.array(variances), np.mean(bias), np.mean(var)
 
     def lambda_best_fit(self, method, fold = 4, n_lambda = 1001, l_min = -5.5, l_max = -0.5, random_num = True, use_seed = False, seed = 42, X = 'None', z = 2, max_iter = 1001, full = False, precompute = True):
+        '''
+        A method for finding the best lambda value between l_min and l_max including lambda = 0 using k-fold.
+        The best lambda is the one that minimizes the mean between the different folds. I return the lambda mean which minimized mse while maximized r2
+
+        method is either ridge or lasso
+        fold is the number of folds in the k-folds
+        n_lambda is the number of lambda values logarithmically spaced between l_min and l_max
+        random_num randomizes the indexes in the k-fold
+        use_seed is to have the randomized numbers based on a seed
+        seed is that seed for use_seed
+        X and z can be given if not will defult to self.X and self.z
+        max_iter is the interations in lasso
+        precompute does something idunno, but using True makes the regression for lasso go faster
+
+        full determines whether lambda maximises the error for the excluded fold or the entire data set. Defult is false as it should be
+
+        returns
+        lambda_min
+        errors
+        all tested lambdas
+        '''
 
         lambdas = np.array([0] + np.logspace(l_min, l_max, n_lambda).tolist())
         if type(X) == type('None'):
@@ -402,7 +499,26 @@ class regression(object):
 
         lambda_min = lambdas[int((index_mse + index_r2)/2)]
 
-        return lambda_min, errors, lambdas,
+        return lambda_min, errors, lambdas
+
+    def ols_ridge_test(self):
+        X = np.array([[1], [1], [1], [1], [1], [1], [1], [1], [1]])
+        z = np.array([[1,1,1], [2,2,2], [3,3,3]])
+        beta = self.OLS(X = X, z = z)
+        beta2 = self.Ridge(X = X, z = z, lam = 0)
+
+        try:
+            assert np.abs(np.mean(beta) - np.mean(z)) < 1e-6
+        except AssertionError:
+            print('Failed in OLS mean test')
+            sys.exit()
+
+        try:
+            assert np.abs(np.mean(beta) - np.mean(z)) < 1e-6
+        except AssertionError:
+            print('Failed in Ridge mean test with lambda = 0')
+            sys.exit()
+
 
 
 
