@@ -25,6 +25,7 @@ to create the model.
 The remaining are:
 
 ```
+z_tilde(beta, X = 'None')
 MSE(z_tilde, z)
 R_squared(z_tilde, z)
 beta_variance(sigma_squared, X = 'None', lam = 0)
