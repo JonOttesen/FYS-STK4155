@@ -19,11 +19,11 @@ to create the model.
 The remaining are:
 
 ```
-MSE
-R_squared
-beta_variance
-sigma_squared
-lambda_best_fit
+MSE(z_tilde, z)
+R_squared(z_tilde, z)
+beta_variance(sigma_squared, X = 'None', lam = 0)
+sigma_squared(sz_tilde, z, p = 'polynomial order')
+lambda_best_fit(method, fold = 4, n_lambda = 1001, l_min = -5.5, l_max = -0.5, random_num = True, use_seed = False, seed = 42, X = 'None', z = 2, max_iter = 1001, full = False, precompute = True)
 ```
 For better explanation see the documentation in the file.
 
