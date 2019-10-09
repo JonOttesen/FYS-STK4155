@@ -12,18 +12,19 @@ terrrain.py
 ### 'regression.py'
 This is a class consisting of the regression methods like OLS, ridge and lasso regression. It aslo contains
 a general train test split and k-fold cross validation where the number of folds can be chosen by the user.
-The main modules are the ** OLS, ridge and lasso** modules.
+The main modules are the **OLS, ridge and lasso** modules.
 
 Other important modules are the 'z_tilde' module which uses the calculated beta and a given design matrix X
 to create the model.
 The remaining are:
-'''
+
+```
 MSE
 R_squared
 beta_variance
 sigma_squared
 lambda_best_fit
-'''
+```
 For better explanation see the documentation in the file.
 
 ### 'results.py'
