@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import time
 from sklearn.model_selection import train_test_split
 import sys
-from numba import jit
+from numba import jit, jitclass
 
 
 
@@ -119,7 +119,7 @@ class logistic():
 
 class NeuralNetwork():
 
-    def __init__(self, X,  y, n_cat = 10, epochs = 10, batch_size = 100, eta = 0.1, lmbd = 0.0, split = True, seed = 42, train = 0.7, end_activation = 'softmax'):
+    def __init__(self, X,  y, n_cat = 10, epochs = 10, batch_size = 100, eta = 0.1, lmbd = 0.0, split = True, seed = 42, train = 0.7, end_activation = 'softmax', cost_function = 'cross_entropy'):
         self.X = X.astype(np.float64)
         self.y = y.astype(np.float64).reshape(self.X.shape[0], 1)
 
@@ -144,6 +144,7 @@ class NeuralNetwork():
         self.activation_func = []
         self.neurons_in_layer.append(self.n_features)
         self.end_activation = end_activation
+        self.cost_function = cost_function
         self.y_2dim_shape()
 
 
@@ -153,7 +154,7 @@ class NeuralNetwork():
             pass
         else:
             uniques = np.unique(self.y)
-            if len(uniques) != self.n_cat and end_activation != 'softmax':
+            if len(uniques) != self.n_cat or self.end_activation != 'softmax':
                 pass
             else:
                 y_new = np.zeros((len(self.y), len(uniques)))
@@ -184,6 +185,14 @@ class NeuralNetwork():
 
         self.neurons_in_layer.append(self.n_cat)
 
+        if self.cost_function == 'mse':
+            self.cost_f = self.mse_grad
+        elif self.cost_function == 'cross_entropy':
+            self.cost_f = self.cross_entropy_grad
+        else:
+            self.cost_f = self.cross_entropy_grad
+
+
 
         for i in range(1, self.N_layers + 1):
             self.weights.append(np.random.normal(size = (self.neurons_in_layer[i-1], self.neurons_in_layer[i]), scale = np.sqrt(2/self.neurons_in_layer[i-1])))
@@ -207,14 +216,17 @@ class NeuralNetwork():
             elif self.activation_func[i] == 'relu':
                 self.f.append(self.relu)
                 self.df.append(self.relu_prime)
+            elif self.activation_func[i] == 'reg':
+                self.f.append(self.reg)
+                self.df.append(self.reg_prime)
 
 
-    def feed_forward(self, X):
+    def feed_forward(self):
         # feed-forward for training
         self.a_h = []
         self.z_h = []
 
-        z_h = X @ self.weights[0] + self.biases[0]
+        z_h = self.X_batched @ self.weights[0] + self.biases[0]
         self.z_h.append(z_h)
         self.a_h.append(self.f[0](z_h))
 
@@ -224,9 +236,9 @@ class NeuralNetwork():
             self.a_h.append(self.f[layer](self.z_h[layer]))
 
 
-    def backpropagation(self, X, y):
+    def backpropagation(self):
 
-        error = self.cross_entropy_grad(a = self.a_h[-1], y = y) * self.df[-1](self.z_h[-1])
+        error = self.cost_f(a = self.a_h[-1]) * self.df[-1](self.z_h[-1])
 
         for layer in range(2, self.N_layers + 1):
             #error = (error @ self.weights[-layer + 1].T) * self.df[-layer](self.z_h[-layer])
@@ -243,11 +255,10 @@ class NeuralNetwork():
             self.biases[-layer + 1] -= self.eta*b_gradient
 
 
-        w_gradient = X.T @ error
+        w_gradient = self.X_batched.T @ error
         b_gradient = np.sum(error, axis = 0)
         self.weights[0] -= self.eta*w_gradient
         self.biases[0] -= self.eta*b_gradient
-
 
 
     def train(self):
@@ -261,16 +272,15 @@ class NeuralNetwork():
                 batch = data_indices[:self.batch_size]
 
                 # minibatch training data
-                X = self.X[batch]
-                y = self.y[batch]
+                self.X_batched = self.X[batch]
+                self.y_batched = self.y[batch]
 
-                self.feed_forward(X)
-                self.backpropagation(X, y)
+                self.feed_forward()
+                self.backpropagation()
 
 
     def feed_forward_out(self, X):
         # feed-forward for training
-
         z_h = X @ self.weights[0] + self.biases[0]
         a_h = self.f[0](z_h)
 
@@ -283,11 +293,13 @@ class NeuralNetwork():
 
 
     def predict(self, X):
+        self.X_batched = X
         probabilities = self.feed_forward_out(X)
         return np.argmax(probabilities, axis=1)
 
 
     def predict_probabilities(self, X):
+        self.X_batched = X
         probabilities = self.feed_forward_out(X)
         return probabilities
 
@@ -306,8 +318,13 @@ class NeuralNetwork():
         return X_train, X_test, y_train, y_test
 
 
-    def cross_entropy_grad(self, a, y):
-        return -y/a + (1 - y)/(1 -a)
+    def cross_entropy_grad(self, a):
+        return -self.y_batched/a + (1 - self.y_batched)/(1 -a)
+
+
+    def mse_grad(self, a):
+        #a is my predicted surface or whatever, it's the same as y_tilde or z_tilde etc
+        return -2*np.mean(self.y_batched - a)
 
 
     def sigmoid(self, x):
@@ -348,38 +365,15 @@ class NeuralNetwork():
         return 1. * (x > 0)
 
 
-    def lin_reg(self, x, beta):
-        return x @ beta.reshape(len(x), 1)
+    def reg(self, beta):
+        #return np.reshape(self.X_batched @ np.mean(beta, axis = 0), (len(self.X_batched), 1))
+        return np.sum(self.X_batched*beta, axis = 1)
 
 
-    def mse_deriv(self, z, _tilde):
-        return 2/np.size(z_tilde)*np.sum(z - z_tilde)
+    def reg_prime(self, beta):
+        return self.X_batched
 
-"""
-def sigmoid(x):
-	return 1.0/(1.0 + np.exp(-x))
 
-def sigmoid_prime(x):
-	return sigmoid(x)*(1.0-sigmoid(x))
-
-def tanh(x):
-	return np.tanh(x)
-
-def tanh_prime(x):
-	return 1.0 - x**2
-
-def softmax(x):
-    return (np.exp(np.array(x)) / np.sum(np.exp(np.array(x))))
-
-def softmax_prime(x):
-    return softmax(x)*(1.0-softmax(x))
-
-def linear(x):
-	return x
-
-def linear_prime(x):
-	return
-"""
 
 
 class Gradient():
@@ -442,67 +436,73 @@ class Gradient():
         return beta
 
 
-file_name = "default of credit card clients.xls"
-credit_data = pd.read_excel(file_name, index_col=0, index_row = 1)
-credit_data_np = np.copy(credit_data.to_numpy()[1:])
-
-X = np.delete(credit_data_np, -1, axis = 1)
-y = np.copy(credit_data_np[:, -1]).astype(np.float64)
-
-del1 = np.logical_and(np.logical_and(X[:, 2] != 0, X[:, 2] != 5), np.logical_and(X[:, 2] != 6, X[:, 3] != 0))
-
-X = X[del1]
-y = y[del1]
-
-
-np.random.seed(42)
-N = 1000
-X = np.random.uniform(0, 1, (N, 2))
-y = np.zeros(N)
-y[X[:, 1] > 0.5] = 1
-"""
-test = logistic(X = X, y = y, split = True, train = 0.7)
-
-time1 = time.time()
-test.logistic_regression(method = 'ADAM', lr = 0.000001, max_iter = 10000, batch_size = 0.02)
-prob = test.predict()
-pred = test.sign(prob)
-print('My model: ', test.Accuracy(y = test.y_test, pred = pred))
-#print(time.time() - time1)
-
-from sklearn.linear_model import LogisticRegression
-
-clf = LogisticRegression(random_state = 0, solver = 'lbfgs', multi_class = 'multinomial', max_iter = 100000, tol = 1e-10).fit(test.X, test.y)
-
-print('sklearn: ', clf.score(test.X_test, test.y_test))
-"""
-#X = X.astype(np.float64)
-#y = y.astype(np.float64)
-
-#indexes_0 = np.where(y == 0)[0]
-#print(len(indexes_0))
-#np.random.shuffle(indexes_0)
-#X = np.delete(X, indexes_0[:int(len(indexes_0)/1.5)], axis = 0)
-#y = np.delete(y, indexes_0[:int(len(indexes_0)/1.5)])
-#print(np.shape(X))
 
 
 
-NN = NeuralNetwork(X, y, epochs = 500, n_cat = 2, eta = 1e-3, batch_size = 100, end_activation = 'softmax', split = True)
-NN.add_layer(32, 'relu')
-#NN.add_layer(48, 'sigmoid')
-#NN.add_layer(64, 'sigmoid')
-#NN.add_layer(72, 'sigmoid')
-NN.initiate_network()
-NN.train()
+if __name__ == "__main__":
 
-prob = NN.predict_probabilities(NN.X_test)
-#print(prob)
-#print(np.sum(prob == prob[0]))
-#print(np.size(NN.y_test))
+    file_name = "default of credit card clients.xls"
+    credit_data = pd.read_excel(file_name, index_col=0, index_row = 1)
+    credit_data_np = np.copy(credit_data.to_numpy()[1:])
+
+    X = np.delete(credit_data_np, -1, axis = 1)
+    y = np.copy(credit_data_np[:, -1]).astype(np.float64)
+
+    del1 = np.logical_and(np.logical_and(X[:, 2] != 0, X[:, 2] != 5), np.logical_and(X[:, 2] != 6, X[:, 3] != 0))
+
+    X = X[del1]
+    y = y[del1]
 
 
-print(NN.Accuracy(y = NN.y_test, pred = np.argmax(prob, axis = 1)))
+    np.random.seed(42)
+    N = 1000
+    X = np.random.uniform(0, 1, (N, 2))
+    y = np.zeros(N)
+    y[X[:, 1]**2 > 0.5] = 1
+    """
+    test = logistic(X = X, y = y, split = True, train = 0.7)
+
+    time1 = time.time()
+    test.logistic_regression(method = 'ADAM', lr = 0.000001, max_iter = 10000, batch_size = 0.02)
+    prob = test.predict()
+    pred = test.sign(prob)
+    print('My model: ', test.Accuracy(y = test.y_test, pred = pred))
+    #print(time.time() - time1)
+
+    from sklearn.linear_model import LogisticRegression
+
+    clf = LogisticRegression(random_state = 0, solver = 'lbfgs', multi_class = 'multinomial', max_iter = 100000, tol = 1e-10).fit(test.X, test.y)
+
+    print('sklearn: ', clf.score(test.X_test, test.y_test))
+    """
+    #X = X.astype(np.float64)
+    #y = y.astype(np.float64)
+
+    #indexes_0 = np.where(y == 0)[0]
+    #print(len(indexes_0))
+    #np.random.shuffle(indexes_0)
+    #X = np.delete(X, indexes_0[:int(len(indexes_0)/1.5)], axis = 0)
+    #y = np.delete(y, indexes_0[:int(len(indexes_0)/1.5)])
+    #print(np.shape(X))
+
+
+
+    NN = NeuralNetwork(X, y, epochs = 500, n_cat = 2, eta = 1e-10, batch_size = 100, end_activation = 'reg', split = True, cost_function = 'mse')
+    NN.add_layer(32, 'relu')
+    #NN.add_layer(48, 'sigmoid')
+    #NN.add_layer(64, 'sigmoid')
+    #NN.add_layer(72, 'sigmoid')
+    NN.initiate_network()
+    NN.train()
+
+    prob = NN.predict_probabilities(NN.X_test)
+    print(prob)
+    #print(prob)
+    #print(np.sum(prob == prob[0]))
+    #print(np.size(NN.y_test))
+
+
+    print(NN.Accuracy(y = NN.y_test, pred = np.argmax(prob, axis = 1)))
 
 
 
