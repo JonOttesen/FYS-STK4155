@@ -57,4 +57,4 @@ NN.initiate_network()
 NN.train()
 ```
 
-
+Project2_new is a backup if something is wrong with Project2 folder
