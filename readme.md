@@ -39,3 +39,22 @@ This file creates all results from the Franke function data and saves the images
 
 ### 'terrain.py'
 This file creates all the results from the terrain data and saves the images in the Resutls_terrain folder.
+
+
+## Project 2
+results.py Results python file for the logreg results
+resutls.pyNN  Results python file for the NN credit results
+regression_NN.py  Results python file for NN Franke
+read_credit_and_preprocess.py  Reading and preprocessing of the credit card data
+
+reg_and_nn.py The main file containing the Logreg class, NN class and Gradient descent class
+Simple running example for the NN class
+```
+NN = NeuralNetwork(X_train, y_train, epochs = 200, n_cat = 1, eta = 10**(-4), batch_size = 500, end_activation = 'relu', split = False, cost_function = 'mse', tqdm_disable = True)
+NN.add_layer(80, 'relu')
+
+NN.initiate_network()
+NN.train()
+```
+
+
